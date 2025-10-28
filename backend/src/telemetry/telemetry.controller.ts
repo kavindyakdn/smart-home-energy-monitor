@@ -46,29 +46,6 @@ export class TelemetryController {
   }
 
   /**
-   * Get telemetry readings with optional filtering
-   * GET /telemetry/readings?deviceId=&startTime=&endTime=&limit=
-   */
-  @Get('readings')
-  async getReadings(
-    @Query('deviceId') deviceId?: string,
-    @Query('startTime') startTime?: string,
-    @Query('endTime') endTime?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const limitNumber = limit ? parseInt(limit, 10) : 100;
-    this.logger.log(
-      `Retrieving telemetry readings for device: ${deviceId || 'all'}`,
-    );
-    return this.telemetryService.getReadings(
-      deviceId,
-      startTime,
-      endTime,
-      limitNumber,
-    );
-  }
-
-  /**
    * Get device statistics
    * GET /telemetry/devices/:deviceId/stats?hours=
    */

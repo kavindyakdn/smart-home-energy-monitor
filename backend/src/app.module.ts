@@ -4,7 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DevicesModule } from './devices/devices.module';
-// import { TelemetryModule } from './telemetry/telemetry.module';
+import { TelemetryModule } from './telemetry/telemetry.module';
 
 @Module({
   imports: [
@@ -16,7 +16,7 @@ import { DevicesModule } from './devices/devices.module';
       }),
     }),
     DevicesModule,
-    // TelemetryModule,
+    TelemetryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

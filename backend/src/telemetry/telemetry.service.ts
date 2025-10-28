@@ -123,25 +123,22 @@ export class TelemetryService {
   }
 
   async getReadings(
-    deviceId?: string,
+    deviceId: string,
     startTime?: string,
     endTime?: string,
     limit: number = 100,
   ): Promise<Telemetry[]> {
     try {
-      this.logger.log(
-        `Retrieving telemetry readings for device: ${deviceId || 'all'}`,
-      );
+      this.logger.log(`Retrieving telemetry readings for device: ${deviceId}`);
 
       // Simple validation - let MongoDB handle the rest
       if (limit > 1000) {
         limit = 1000; // Cap silently instead of throwing
       }
 
-      const filter: any = {};
-      if (deviceId) {
-        filter.deviceId = deviceId.trim();
-      }
+      const filter: any = {
+        deviceId: deviceId.trim(),
+      };
       if (startTime || endTime) {
         filter.timestamp = {};
         if (startTime) {
