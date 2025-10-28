@@ -20,14 +20,13 @@ export class TelemetryService {
 
   async ingestSingle(data: CreateTelemetryDto): Promise<Telemetry> {
     try {
-      // Input validation
-      this.validateTelemetryInput(data);
-
       this.logger.log(
         `Ingesting single telemetry for device: ${data.deviceId}`,
       );
 
-      // Create telemetry document
+      // DTO validation handles most validation, just add business logic validation
+      this.validateBusinessRules(data);
+
       const telemetry = new this.telemetryModel(data);
       const savedTelemetry = await telemetry.save();
 
@@ -39,21 +38,12 @@ export class TelemetryService {
         error.stack,
       );
 
-      // Re-throw known exceptions
-      if (error instanceof BadRequestException) {
-        throw error;
+      // Let MongoDB validation errors pass through naturally
+      if (error.name === 'ValidationError' || error.name === 'CastError') {
+        throw new BadRequestException(error.message);
       }
 
-      // Handle database errors
-      if (error.name === 'ValidationError') {
-        throw new BadRequestException(`Validation failed: ${error.message}`);
-      }
-
-      if (error.name === 'CastError') {
-        throw new BadRequestException(`Invalid data format: ${error.message}`);
-      }
-
-      // Handle connection errors
+      // Only handle critical errors
       if (
         error.name === 'MongoNetworkError' ||
         error.name === 'MongoTimeoutError'
@@ -63,7 +53,11 @@ export class TelemetryService {
         );
       }
 
-      // Generic error fallback
+      // Re-throw known exceptions
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
       throw new InternalServerErrorException(
         'Failed to ingest telemetry. Please try again later.',
       );
@@ -72,19 +66,20 @@ export class TelemetryService {
 
   async ingestBatch(batch: BatchTelemetryDto): Promise<Telemetry[]> {
     try {
-      // Input validation
-      this.validateBatchTelemetryInput(batch);
-
       this.logger.log(
         `Ingesting batch telemetry with ${batch.data.length} records`,
       );
 
-      // Validate each telemetry record
-      for (let i = 0; i < batch.data.length; i++) {
-        this.validateTelemetryInput(batch.data[i], i);
+      // Validate batch size only
+      if (batch.data.length > 1000) {
+        throw new BadRequestException('Batch size cannot exceed 1000 records');
       }
 
-      // Insert batch data
+      // Validate business rules for each record
+      batch.data.forEach((data, index) => {
+        this.validateBusinessRules(data, index);
+      });
+
       const savedTelemetry = await this.telemetryModel.insertMany(batch.data, {
         ordered: false, // Continue inserting even if some fail
       });
@@ -99,16 +94,16 @@ export class TelemetryService {
         error.stack,
       );
 
-      // Re-throw known exceptions
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-
       // Handle bulk write errors
       if (error.name === 'BulkWriteError') {
         const writeErrors = error.writeErrors || [];
         const errorMessages = writeErrors.map((err) => err.errmsg).join('; ');
         throw new BadRequestException(`Batch insert failed: ${errorMessages}`);
+      }
+
+      // Re-throw known exceptions
+      if (error instanceof BadRequestException) {
+        throw error;
       }
 
       // Handle connection errors
@@ -121,7 +116,6 @@ export class TelemetryService {
         );
       }
 
-      // Generic error fallback
       throw new InternalServerErrorException(
         'Failed to ingest batch telemetry. Please try again later.',
       );
@@ -135,14 +129,15 @@ export class TelemetryService {
     limit: number = 100,
   ): Promise<Telemetry[]> {
     try {
-      // Input validation
-      this.validateQueryParameters(deviceId, startTime, endTime, limit);
-
       this.logger.log(
         `Retrieving telemetry readings for device: ${deviceId || 'all'}`,
       );
 
-      // Build filter
+      // Simple validation - let MongoDB handle the rest
+      if (limit > 1000) {
+        limit = 1000; // Cap silently instead of throwing
+      }
+
       const filter: any = {};
       if (deviceId) {
         filter.deviceId = deviceId.trim();
@@ -157,11 +152,10 @@ export class TelemetryService {
         }
       }
 
-      // Execute query
       const readings = await this.telemetryModel
         .find(filter)
         .sort({ timestamp: -1 })
-        .limit(Math.min(limit, 1000)) // Cap at 1000 records
+        .limit(limit)
         .exec();
 
       this.logger.log(
@@ -174,12 +168,7 @@ export class TelemetryService {
         error.stack,
       );
 
-      // Re-throw known exceptions
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-
-      // Handle connection errors
+      // Only handle critical errors
       if (
         error.name === 'MongoNetworkError' ||
         error.name === 'MongoTimeoutError'
@@ -189,7 +178,6 @@ export class TelemetryService {
         );
       }
 
-      // Generic error fallback
       throw new InternalServerErrorException(
         'Failed to retrieve telemetry readings. Please try again later.',
       );
@@ -198,13 +186,12 @@ export class TelemetryService {
 
   async getDeviceStats(deviceId: string, hours: number = 24): Promise<any> {
     try {
-      // Input validation
-      if (!deviceId || deviceId.trim().length === 0) {
+      // Simple validation
+      if (!deviceId?.trim()) {
         throw new BadRequestException('Device ID is required');
       }
 
       if (hours <= 0 || hours > 168) {
-        // Max 1 week
         throw new BadRequestException('Hours must be between 1 and 168');
       }
 
@@ -246,12 +233,10 @@ export class TelemetryService {
         error.stack,
       );
 
-      // Re-throw known exceptions
       if (error instanceof BadRequestException) {
         throw error;
       }
 
-      // Handle connection errors
       if (
         error.name === 'MongoNetworkError' ||
         error.name === 'MongoTimeoutError'
@@ -261,7 +246,6 @@ export class TelemetryService {
         );
       }
 
-      // Generic error fallback
       throw new InternalServerErrorException(
         'Failed to retrieve device stats. Please try again later.',
       );
@@ -270,7 +254,6 @@ export class TelemetryService {
 
   async deleteOldTelemetry(daysToKeep: number = 30): Promise<number> {
     try {
-      // Input validation
       if (daysToKeep <= 0 || daysToKeep > 365) {
         throw new BadRequestException('Days to keep must be between 1 and 365');
       }
@@ -294,12 +277,10 @@ export class TelemetryService {
         error.stack,
       );
 
-      // Re-throw known exceptions
       if (error instanceof BadRequestException) {
         throw error;
       }
 
-      // Handle connection errors
       if (
         error.name === 'MongoNetworkError' ||
         error.name === 'MongoTimeoutError'
@@ -309,7 +290,6 @@ export class TelemetryService {
         );
       }
 
-      // Generic error fallback
       throw new InternalServerErrorException(
         'Failed to delete old telemetry. Please try again later.',
       );
@@ -317,159 +297,37 @@ export class TelemetryService {
   }
 
   /**
-   * Validates single telemetry input
+   * Only validate business-critical rules, not basic data types
    */
-  private validateTelemetryInput(
+  private validateBusinessRules(
     data: CreateTelemetryDto,
     index?: number,
   ): void {
-    if (!data) {
-      throw new BadRequestException('Telemetry data is required');
-    }
-
     const prefix = index !== undefined ? `Record ${index + 1}: ` : '';
 
-    if (!data.deviceId || data.deviceId.trim().length === 0) {
-      throw new BadRequestException(`${prefix}Device ID is required`);
-    }
-
-    if (!data.category || data.category.trim().length === 0) {
-      throw new BadRequestException(`${prefix}Category is required`);
-    }
-
-    if (data.value === undefined || data.value === null) {
-      throw new BadRequestException(`${prefix}Value is required`);
-    }
-
-    if (typeof data.value !== 'number' || isNaN(data.value)) {
-      throw new BadRequestException(`${prefix}Value must be a valid number`);
-    }
-
+    // Only validate extreme values that could cause issues
     if (data.value < -1000000 || data.value > 1000000) {
       throw new BadRequestException(
         `${prefix}Value must be between -1,000,000 and 1,000,000`,
       );
     }
 
-    if (data.status === undefined || data.status === null) {
-      throw new BadRequestException(`${prefix}Status is required`);
-    }
-
-    if (typeof data.status !== 'boolean') {
-      throw new BadRequestException(`${prefix}Status must be a boolean`);
-    }
-
-    if (!data.timestamp) {
-      throw new BadRequestException(`${prefix}Timestamp is required`);
-    }
-
+    // Only validate if timestamp is extremely unreasonable (more than 1 year off)
     const timestamp = new Date(data.timestamp);
-    if (isNaN(timestamp.getTime())) {
-      throw new BadRequestException(`${prefix}Timestamp must be a valid date`);
-    }
-
-    // Check if timestamp is not too far in the future (max 1 hour)
     const now = new Date();
-    const maxFutureTime = new Date(now.getTime() + 60 * 60 * 1000);
-    if (timestamp > maxFutureTime) {
-      throw new BadRequestException(
-        `${prefix}Timestamp cannot be more than 1 hour in the future`,
-      );
+    const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+    const oneYearFromNow = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+
+    if (timestamp < oneYearAgo || timestamp > oneYearFromNow) {
+      throw new BadRequestException(`${prefix}Timestamp appears to be invalid`);
     }
 
-    // Check if timestamp is not too old (max 30 days)
-    const maxPastTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    if (timestamp < maxPastTime) {
-      throw new BadRequestException(
-        `${prefix}Timestamp cannot be older than 30 days`,
-      );
-    }
-
-    // Validate device ID format
+    // Only validate device ID format for security
     const deviceIdRegex = /^[a-zA-Z0-9_-]+$/;
     if (!deviceIdRegex.test(data.deviceId)) {
       throw new BadRequestException(
-        `${prefix}Device ID can only contain letters, numbers, underscores, and hyphens`,
+        `${prefix}Device ID contains invalid characters`,
       );
-    }
-
-    // Validate category
-    const validCategories = [
-      'power',
-      'lighting',
-      'temperature',
-      'humidity',
-      'motion',
-      'door',
-      'window',
-    ];
-    if (!validCategories.includes(data.category.toLowerCase())) {
-      throw new BadRequestException(
-        `${prefix}Category must be one of: ${validCategories.join(', ')}`,
-      );
-    }
-  }
-
-  /**
-   * Validates batch telemetry input
-   */
-  private validateBatchTelemetryInput(batch: BatchTelemetryDto): void {
-    if (!batch) {
-      throw new BadRequestException('Batch data is required');
-    }
-
-    if (!batch.data || !Array.isArray(batch.data)) {
-      throw new BadRequestException('Batch data must be an array');
-    }
-
-    if (batch.data.length === 0) {
-      throw new BadRequestException('Batch data cannot be empty');
-    }
-
-    if (batch.data.length > 1000) {
-      throw new BadRequestException('Batch size cannot exceed 1000 records');
-    }
-  }
-
-  /**
-   * Validates query parameters
-   */
-  private validateQueryParameters(
-    deviceId?: string,
-    startTime?: string,
-    endTime?: string,
-    limit?: number,
-  ): void {
-    if (deviceId !== undefined && (!deviceId || deviceId.trim().length === 0)) {
-      throw new BadRequestException('Device ID cannot be empty');
-    }
-
-    if (startTime) {
-      const start = new Date(startTime);
-      if (isNaN(start.getTime())) {
-        throw new BadRequestException('Start time must be a valid date');
-      }
-    }
-
-    if (endTime) {
-      const end = new Date(endTime);
-      if (isNaN(end.getTime())) {
-        throw new BadRequestException('End time must be a valid date');
-      }
-    }
-
-    if (startTime && endTime) {
-      const start = new Date(startTime);
-      const end = new Date(endTime);
-      if (start >= end) {
-        throw new BadRequestException('Start time must be before end time');
-      }
-    }
-
-    if (limit !== undefined) {
-      if (limit <= 0 || limit > 1000) {
-        throw new BadRequestException('Limit must be between 1 and 1000');
-      }
     }
   }
 }
