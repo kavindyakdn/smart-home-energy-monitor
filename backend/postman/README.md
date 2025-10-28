@@ -1,0 +1,193 @@
+# Device APIs - Postman Test Collection
+
+This Postman collection provides comprehensive test cases for the Smart Home Energy Monitor Device APIs.
+
+## Collection Overview
+
+The collection includes test cases for all CRUD operations on the `/devices` endpoint:
+
+- **Create Device** - POST `/devices`
+- **Get All Devices** - GET `/devices`
+- **Get Device by ID** - GET `/devices/:deviceId`
+- **Update Device** - PATCH `/devices/:deviceId`
+- **Delete Device** - DELETE `/devices/:deviceId`
+
+## Setup Instructions
+
+### 1. Import the Collection
+
+1. Open Postman
+2. Click "Import" button
+3. Select the `Device-APIs.postman_collection.json` file
+4. The collection will be imported with all test cases
+
+### 2. Configure Environment Variables
+
+The collection uses the following variables:
+
+- `baseUrl`: Set to `http://localhost:3000` (default)
+- `deviceId`: Automatically set when creating devices (used for subsequent tests)
+
+### 3. Start the Backend Server
+
+Make sure your NestJS backend is running on port 3000:
+
+```bash
+cd backend
+npm run start:dev
+```
+
+## Test Categories
+
+### 1. Device Management
+
+Basic CRUD operations with comprehensive test cases:
+
+- **Create Device**: Tests with full data, minimal data, and validation
+- **Get All Devices**: Verifies array response and data structure
+- **Get Device by ID**: Tests successful retrieval and 404 handling
+- **Update Device**: Tests full updates, partial updates, and validation
+- **Delete Device**: Tests successful deletion and 404 handling
+
+### 2. Device Types & Categories
+
+Tests for different device categories:
+
+- **Power Category**: Appliances, plugs, etc.
+- **Lighting Category**: Lights, LED strips, etc.
+- **Heating Category**: Thermostats, heaters, etc.
+
+### 3. Edge Cases & Error Handling
+
+Comprehensive error testing:
+
+- Empty request bodies
+- Invalid JSON
+- Very long device IDs
+- Special characters in names
+- Negative wattage values
+- Duplicate device IDs
+- Non-existent device operations
+
+## Test Features
+
+### Automated Test Scripts
+
+Each request includes automated test scripts that verify:
+
+- **Status Codes**: Correct HTTP response codes
+- **Response Structure**: Required fields and data types
+- **Data Validation**: Field values match expectations
+- **Error Handling**: Proper error messages for invalid requests
+
+### Variable Management
+
+- Device IDs are automatically captured and reused across tests
+- Base URL is configurable via collection variables
+- Tests can be run independently or as part of the full collection
+
+## Running Tests
+
+### Individual Tests
+
+1. Select any request in the collection
+2. Click "Send" to run the test
+3. View test results in the "Test Results" tab
+
+### Collection Runner
+
+1. Click the collection name
+2. Click "Run" to open the Collection Runner
+3. Select which tests to run
+4. Click "Start Test" to run all selected tests
+
+### Newman (Command Line)
+
+You can also run the collection using Newman:
+
+```bash
+# Install Newman globally
+npm install -g newman
+
+# Run the collection
+newman run Device-APIs.postman_collection.json
+
+# Run with environment variables
+newman run Device-APIs.postman_collection.json -e environment.json
+```
+
+## Expected Test Results
+
+### Successful Tests
+
+- **201**: Device created successfully
+- **200**: Device retrieved, updated, or deleted successfully
+
+### Error Tests
+
+- **400**: Bad request (validation errors, malformed JSON)
+- **404**: Device not found
+- **409**: Conflict (duplicate device ID)
+
+## Device Schema
+
+The API expects devices with the following structure:
+
+```json
+{
+  "deviceId": "string (required, unique)",
+  "name": "string (required)",
+  "type": "string (required)",
+  "category": "string (required)",
+  "room": "string (optional)",
+  "ratedWattage": "number (optional)"
+}
+```
+
+### Valid Categories
+
+- `power`: For power-consuming devices
+- `lighting`: For lighting devices
+- `heating`: For heating/cooling devices
+
+### Valid Types
+
+- `plug`: Smart plugs
+- `light`: Lighting devices
+- `thermostat`: Temperature control
+- `appliance`: General appliances
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Connection Refused**: Ensure the backend server is running on port 3000
+2. **404 Errors**: Check that the device ID exists in the database
+3. **Validation Errors**: Verify request body matches the expected schema
+4. **Test Failures**: Check the Test Results tab for specific failure reasons
+
+### Database Reset
+
+If you need to reset the database between test runs:
+
+1. Stop the backend server
+2. Clear your MongoDB database
+3. Restart the backend server
+4. Run the tests again
+
+## Contributing
+
+To add new test cases:
+
+1. Follow the existing naming convention
+2. Include comprehensive test scripts
+3. Test both success and error scenarios
+4. Update this README if adding new test categories
+
+## API Documentation
+
+For more detailed API documentation, refer to the backend source code:
+
+- `backend/src/devices/devices.controller.ts`
+- `backend/src/devices/dto/create-device.dto.ts`
+- `backend/src/devices/schemas/device.schema.ts`
