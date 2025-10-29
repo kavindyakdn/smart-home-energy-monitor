@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TelemetryController } from './telemetry.controller';
 import { TelemetryService } from './telemetry.service';
+import { TelemetryGateway } from './telemetry.gateway';
 import { Telemetry, TelemetrySchema } from './schemas/telemetry.schema';
 
 @Module({
@@ -11,6 +12,7 @@ import { Telemetry, TelemetrySchema } from './schemas/telemetry.schema';
     ]),
   ],
   controllers: [TelemetryController],
-  providers: [TelemetryService],
+  providers: [TelemetryService, TelemetryGateway],
+  exports: [TelemetryService],
 })
 export class TelemetryModule {}

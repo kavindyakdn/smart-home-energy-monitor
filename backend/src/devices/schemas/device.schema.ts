@@ -1,6 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
+/**
+ * Device schema for smart home devices
+ * Represents physical IoT devices that can send telemetry data
+ */
 @Schema({ timestamps: true })
 export class Device extends Document {
   @Prop({ required: true, unique: true })
@@ -10,16 +14,16 @@ export class Device extends Document {
   name: string;
 
   @Prop({ required: true })
-  type: string; // e.g., "plug" | "light" | "thermostat"
+  type: string;
 
   @Prop({ required: true })
-  category: string; // "power" | "lighting" | "heating"
+  category: string;
 
   @Prop()
   room?: string;
 
   @Prop()
-  ratedWattage?: number; // optional: used for power estimation
+  ratedWattage?: number;
 }
 
 export const DeviceSchema = SchemaFactory.createForClass(Device);

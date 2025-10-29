@@ -22,8 +22,6 @@ export class TelemetryController {
 
   /**
    * Ingest single telemetry record
-   * POST /telemetry/ingest
-   * Higher limits for single telemetry ingestion
    */
   @Post('ingest')
   @HttpCode(HttpStatus.CREATED)
@@ -37,8 +35,6 @@ export class TelemetryController {
 
   /**
    * Ingest batch telemetry records
-   * POST /telemetry/ingest/batch
-   * Lower limits for batch ingestion to prevent abuse
    */
   @Post('ingest/batch')
   @HttpCode(HttpStatus.CREATED)
@@ -52,8 +48,6 @@ export class TelemetryController {
 
   /**
    * Get device statistics
-   * GET /telemetry/devices/:deviceId/stats?hours=
-   * Moderate limits for stats queries
    */
   @Get('devices/:deviceId/stats')
   @Throttle({ medium: { limit: 30, ttl: 10000 } }) // 30 requests per 10 seconds
@@ -70,8 +64,6 @@ export class TelemetryController {
 
   /**
    * Get telemetry readings for a specific device
-   * GET /telemetry/devices/:deviceId/readings?startTime=&endTime=&limit=
-   * Moderate limits for reading queries
    */
   @Get('devices/:deviceId/readings')
   @Throttle({ medium: { limit: 40, ttl: 10000 } }) // 40 requests per 10 seconds
@@ -93,8 +85,6 @@ export class TelemetryController {
 
   /**
    * Delete old telemetry data (admin endpoint)
-   * POST /telemetry/cleanup?daysToKeep=
-   * Very restrictive limits for admin operations
    */
   @Post('cleanup')
   @HttpCode(HttpStatus.OK)
@@ -115,8 +105,6 @@ export class TelemetryController {
 
   /**
    * Legacy endpoint for backward compatibility
-   * POST /telemetry/ingest/legacy
-   * Moderate limits for legacy endpoint
    */
   @Post('ingest/legacy')
   @HttpCode(HttpStatus.CREATED)

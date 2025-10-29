@@ -1,16 +1,20 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
+/**
+ * Telemetry schema for IoT sensor data
+ * Stores measurement data from smart home devices
+ */
 @Schema({ timestamps: true })
 export class Telemetry extends Document {
   @Prop({ required: true })
   deviceId: string;
 
   @Prop({ required: true })
-  category: string; // e.g., power, lighting, temperature
+  category: string;
 
   @Prop({ required: true })
-  value: number; // e.g., watts, brightness %, temperature °C
+  value: number;
 
   @Prop({ default: true })
   status: boolean;

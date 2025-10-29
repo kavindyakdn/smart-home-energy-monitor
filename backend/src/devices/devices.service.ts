@@ -12,12 +12,19 @@ import { Device } from './schemas/device.schema';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
 
+/**
+ * Service for managing smart home devices
+ * Handles CRUD operations and business logic for device management
+ */
 @Injectable()
 export class DevicesService {
   private readonly logger = new Logger(DevicesService.name);
 
   constructor(@InjectModel(Device.name) private deviceModel: Model<Device>) {}
 
+  /**
+   * Creates a new smart home device
+   */
   async create(createDeviceDto: CreateDeviceDto): Promise<Device> {
     try {
       // Input validation
@@ -95,6 +102,9 @@ export class DevicesService {
     }
   }
 
+  /**
+   * Retrieves all registered devices
+   */
   async findAll(): Promise<Device[]> {
     try {
       this.logger.log('Retrieving all devices');
@@ -124,6 +134,9 @@ export class DevicesService {
     }
   }
 
+  /**
+   * Retrieves a specific device by its unique identifier
+   */
   async findOne(deviceId: string): Promise<Device> {
     try {
       // Input validation
@@ -176,6 +189,9 @@ export class DevicesService {
     }
   }
 
+  /**
+   * Updates an existing device with new information
+   */
   async update(deviceId: string, updateDto: UpdateDeviceDto): Promise<Device> {
     try {
       // Input validation
@@ -249,6 +265,9 @@ export class DevicesService {
     }
   }
 
+  /**
+   * Removes a device from the system
+   */
   async remove(deviceId: string): Promise<void> {
     try {
       // Input validation

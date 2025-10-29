@@ -9,15 +9,24 @@ import { Model } from 'mongoose';
 import { Telemetry } from './schemas/telemetry.schema';
 import { CreateTelemetryDto } from './dto/create-telemetry.dto';
 import { BatchTelemetryDto } from './dto/batch-telemetry.dto';
+import { TelemetryGateway } from './telemetry.gateway';
 
+/**
+ * Service for managing telemetry data from smart home devices
+ * Handles data ingestion, retrieval, analytics, and cleanup operations
+ */
 @Injectable()
 export class TelemetryService {
   private readonly logger = new Logger(TelemetryService.name);
 
   constructor(
     @InjectModel(Telemetry.name) private telemetryModel: Model<Telemetry>,
+    private readonly telemetryGateway: TelemetryGateway,
   ) {}
 
+  /**
+   * Ingests a single telemetry record from a smart device
+   */
   async ingestSingle(data: CreateTelemetryDto): Promise<Telemetry> {
     try {
       this.logger.log(
@@ -29,6 +38,14 @@ export class TelemetryService {
 
       const telemetry = new this.telemetryModel(data);
       const savedTelemetry = await telemetry.save();
+
+      // Broadcast telemetry update via WebSocket
+      this.telemetryGateway.broadcastTelemetry({
+        deviceId: savedTelemetry.deviceId,
+        timestamp: savedTelemetry.timestamp,
+        value: savedTelemetry.value,
+        category: savedTelemetry.category,
+      });
 
       this.logger.log(`Successfully ingested telemetry: ${savedTelemetry._id}`);
       return savedTelemetry;
@@ -64,6 +81,9 @@ export class TelemetryService {
     }
   }
 
+  /**
+   * Ingests multiple telemetry records in a single batch operation
+   */
   async ingestBatch(batch: BatchTelemetryDto): Promise<Telemetry[]> {
     try {
       this.logger.log(
@@ -83,6 +103,17 @@ export class TelemetryService {
       const savedTelemetry = await this.telemetryModel.insertMany(batch.data, {
         ordered: false, // Continue inserting even if some fail
       });
+
+      // Broadcast batch telemetry updates via WebSocket
+      if (savedTelemetry.length > 0) {
+        const telemetryPayloads = savedTelemetry.map((record) => ({
+          deviceId: record.deviceId,
+          timestamp: record.timestamp,
+          value: record.value,
+          category: record.category,
+        }));
+        this.telemetryGateway.broadcastBatchTelemetry(telemetryPayloads);
+      }
 
       this.logger.log(
         `Successfully ingested ${savedTelemetry.length} telemetry records`,
@@ -122,6 +153,9 @@ export class TelemetryService {
     }
   }
 
+  /**
+   * Retrieves telemetry readings for a specific device with optional filtering
+   */
   async getReadings(
     deviceId: string,
     startTime?: string,
@@ -181,6 +215,9 @@ export class TelemetryService {
     }
   }
 
+  /**
+   * Retrieves aggregated statistics for a specific device over a time period
+   */
   async getDeviceStats(deviceId: string, hours: number = 24): Promise<any> {
     try {
       // Simple validation
@@ -249,6 +286,9 @@ export class TelemetryService {
     }
   }
 
+  /**
+   * Deletes old telemetry data to maintain database performance
+   */
   async deleteOldTelemetry(daysToKeep: number = 30): Promise<number> {
     try {
       if (daysToKeep <= 0 || daysToKeep > 365) {
