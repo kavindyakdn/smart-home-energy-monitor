@@ -1,3 +1,28 @@
+# Exclude dependencies and build output
+node_modules
+.dist
+coverage
+dist
+
+# VCS
+.git
+.gitignore
+
+# Local env and logs
+.env
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor/OS files
+.DS_Store
+*.swp
+
+# Avoid copying nested project duplicate
+backend/
+
+# Docker files not needed in context
+Dockerfile*
 node_modules
 npm-debug.log
 dist

@@ -54,11 +54,10 @@ Build an end-to-end system to:
 
 ### Prerequisites
 
-- Node.js 18+
-- MongoDB 6+
-- npm or yarn
+- Docker
+- Docker Compose
 
-### Installation
+### Run with Docker (no local installs needed)
 
 1. **Clone the repository**
 
@@ -67,37 +66,36 @@ Build an end-to-end system to:
    cd smart-home-energy-monitor
    ```
 
-2. **Install dependencies**
+2. **Create environment files**
+
+   Create `backend/.env` with:
 
    ```bash
-   # Backend dependencies
-   cd backend
-   npm install
-
-   # Frontend dependencies (when implemented)
-   cd ../frontend
-   npm install
+   MONGO_URI=mongodb://mongo:27017/smart-home
+   PORT=3000
+   NODE_ENV=production
+   CORS_ORIGINS=http://localhost:8080
    ```
 
-3. **Environment Setup**
+   Create `frontend/.env` with:
 
    ```bash
-   # Create environment file
-   cp backend/.env.example backend/.env
-
-   # Configure MongoDB connection
-   MONGO_URI=mongodb://localhost:27017/smart-home-energy
+   VITE_API_BASE_URL=http://localhost:3000/api/v1
+   VITE_WS_BASE_URL=http://localhost:3000
    ```
 
-4. **Start the application**
+3. **Build and start all services**
 
    ```bash
-   # Start backend
-   cd backend
-   npm run start:dev
-
-   # Backend will be available at http://localhost:3000
+   docker compose up --build -d
    ```
+
+4. **Access the apps**
+
+   - Backend API: http://localhost:3000
+   - Frontend UI: http://localhost:8080
+
+Docker will build images and install all dependencies for you. No local Node.js, npm, or MongoDB installation is required.
 
 ---
 
@@ -230,7 +228,7 @@ smart-home-energy-monitor/
 
 ```bash
 # Build and run with Docker
-docker-compose up -d
+docker compose up --build -d
 ```
 
 ### Environment Variables
