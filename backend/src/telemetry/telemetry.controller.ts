@@ -12,6 +12,7 @@ import {
 import { Throttle, ThrottlerGuard, SkipThrottle } from '@nestjs/throttler';
 import { UseGuards } from '@nestjs/common';
 import { TelemetryService } from './telemetry.service';
+import { TelemetryGateway } from './telemetry.gateway';
 import { CreateTelemetryDto } from './dto/create-telemetry.dto';
 import { BatchTelemetryDto } from './dto/batch-telemetry.dto';
 
@@ -19,7 +20,10 @@ import { BatchTelemetryDto } from './dto/batch-telemetry.dto';
 export class TelemetryController {
   private readonly logger = new Logger(TelemetryController.name);
 
-  constructor(private readonly telemetryService: TelemetryService) {}
+  constructor(
+    private readonly telemetryService: TelemetryService,
+    private readonly telemetryGateway: TelemetryGateway,
+  ) {}
 
   /**
    * Retrieve telemetry with optional filters
@@ -65,7 +69,10 @@ export class TelemetryController {
     this.logger.log(
       `Received single telemetry ingestion request for device: ${createTelemetryDto.deviceId}`,
     );
-    return this.telemetryService.ingestSingle(createTelemetryDto);
+    const saved = await this.telemetryService.ingestSingle(createTelemetryDto);
+    // Broadcast to connected websocket clients
+    this.telemetryGateway.emitNewTelemetry(saved);
+    return saved;
   }
 
   /**
@@ -79,7 +86,13 @@ export class TelemetryController {
     this.logger.log(
       `Received batch telemetry ingestion request with ${batchTelemetryDto.data.length} records`,
     );
-    return this.telemetryService.ingestBatch(batchTelemetryDto);
+    const savedList =
+      await this.telemetryService.ingestBatch(batchTelemetryDto);
+    // Emit each saved reading to clients
+    for (const item of savedList) {
+      this.telemetryGateway.emitNewTelemetry(item);
+    }
+    return savedList;
   }
 
   /**
@@ -136,5 +149,25 @@ export class TelemetryController {
 
     // Single record request
     return this.telemetryService.ingestSingle(body as CreateTelemetryDto);
+  }
+
+  /**
+   * Emit a test telemetry event to WebSocket clients
+   */
+  @Post('test-broadcast')
+  @HttpCode(HttpStatus.OK)
+  @SkipThrottle()
+  async testBroadcast() {
+    const payload = {
+      _id: 'test-' + Date.now(),
+      deviceId: 'demo-device',
+      category: 'test',
+      value: Math.round(Math.random() * 1000) / 10,
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    };
+    this.logger.log('Test broadcasting telemetry payload');
+    this.telemetryGateway.emitNewTelemetry(payload);
+    return { message: 'Test telemetry broadcast emitted', payload };
   }
 }

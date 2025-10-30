@@ -4,6 +4,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { io } from "socket.io-client";
 import {
   RefreshCw,
   AlertCircle,
@@ -19,8 +20,6 @@ import { KeyMetrics } from "../components/dashboard/KeyMetrics";
 import { TrendChart } from "../components/dashboard/TrendChart";
 import { RoomBreakdownChart } from "../components/dashboard/RoomBreakdown";
 import { DeviceStatusTable } from "../components/dashboard/DeviceTable";
-
-//
 
 const COLORS = [
   "#3b82f6",
@@ -181,6 +180,41 @@ export default function RichDashboard() {
   useEffect(() => {
     fetchData();
   }, [dateRange, deviceIdFilter, fetchData]);
+
+  // WebSocket: subscribe to real-time telemetry updates
+  useEffect(() => {
+    const socket = io(
+      "http://localhost:3000/telemetry",
+      {
+        withCredentials: true,
+      }
+    );
+
+    const onNewTelemetry = (payload: any) => {
+      const next = {
+        deviceId: String(
+          payload?.deviceId ?? "unknown"
+        ),
+        timestamp:
+          payload?.timestamp ??
+          new Date().toISOString(),
+        value: Number(payload?.value ?? 0),
+        status: payload?.status,
+      } as Telemetry;
+      setReadings((prev) => [...prev, next]);
+      setLastUpdate(new Date());
+    };
+
+    socket.on("connect", () => {
+      // Optional: console.log("WS connected", socket.id);
+    });
+    socket.on("telemetry:new", onNewTelemetry);
+
+    return () => {
+      socket.off("telemetry:new", onNewTelemetry);
+      socket.disconnect();
+    };
+  }, []);
 
   // Derive enriched readings with device info and filters
   const enriched = useMemo(() => {

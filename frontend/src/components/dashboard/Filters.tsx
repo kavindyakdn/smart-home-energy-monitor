@@ -10,6 +10,7 @@ type FiltersProps = {
   devices: Array<{
     deviceId: string;
     name: string;
+    type?: string; // optional type to support filtering by deviceType
   }>; // minimal shape
   onChange: (next: {
     deviceType?: string;
@@ -143,7 +144,22 @@ export function FiltersPanel({
             Device
           </label>
           <select
-            value={deviceId}
+            value={
+              deviceId === "all"
+                ? "all"
+                : devices.find(
+                    (d) =>
+                      (d.type ?? "all") ===
+                        deviceType &&
+                      d.deviceId === deviceId
+                  )
+                ? deviceId
+                : devices.find(
+                    (d) =>
+                      (d.type ?? "all") ===
+                      deviceType
+                  )?.deviceId ?? deviceId
+            }
             onChange={(e) =>
               onChange({
                 deviceId: e.target.value,

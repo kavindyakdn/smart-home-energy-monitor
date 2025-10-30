@@ -9,7 +9,6 @@ import { Model } from 'mongoose';
 import { Telemetry } from './schemas/telemetry.schema';
 import { CreateTelemetryDto } from './dto/create-telemetry.dto';
 import { BatchTelemetryDto } from './dto/batch-telemetry.dto';
-import { TelemetryGateway } from './telemetry.gateway';
 
 /**
  * Service for managing telemetry data from smart home devices
@@ -21,7 +20,6 @@ export class TelemetryService {
 
   constructor(
     @InjectModel(Telemetry.name) private telemetryModel: Model<Telemetry>,
-    private readonly telemetryGateway: TelemetryGateway,
   ) {}
 
   /**
@@ -38,14 +36,6 @@ export class TelemetryService {
 
       const telemetry = new this.telemetryModel(data);
       const savedTelemetry = await telemetry.save();
-
-      // Broadcast telemetry update via WebSocket
-      this.telemetryGateway.broadcastTelemetry({
-        deviceId: savedTelemetry.deviceId,
-        timestamp: savedTelemetry.timestamp,
-        value: savedTelemetry.value,
-        category: savedTelemetry.category,
-      });
 
       this.logger.log(`Successfully ingested telemetry: ${savedTelemetry._id}`);
       return savedTelemetry;
@@ -103,17 +93,6 @@ export class TelemetryService {
       const savedTelemetry = await this.telemetryModel.insertMany(batch.data, {
         ordered: false, // Continue inserting even if some fail
       });
-
-      // Broadcast batch telemetry updates via WebSocket
-      if (savedTelemetry.length > 0) {
-        const telemetryPayloads = savedTelemetry.map((record) => ({
-          deviceId: record.deviceId,
-          timestamp: record.timestamp,
-          value: record.value,
-          category: record.category,
-        }));
-        this.telemetryGateway.broadcastBatchTelemetry(telemetryPayloads);
-      }
 
       this.logger.log(
         `Successfully ingested ${savedTelemetry.length} telemetry records`,
