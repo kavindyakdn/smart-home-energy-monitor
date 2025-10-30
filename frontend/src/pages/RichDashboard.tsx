@@ -13,11 +13,14 @@ import {
   getTelemetry,
 } from "../lib/api";
 import type { Device, Telemetry } from "../types";
+import { DashboardHeader } from "../components/dashboard/Header";
+import { FiltersPanel } from "../components/dashboard/Filters";
 import { KeyMetrics } from "../components/dashboard/KeyMetrics";
 import { TrendChart } from "../components/dashboard/TrendChart";
-import { DeviceStatusTable } from "../components/dashboard/DeviceTable";
 import { RoomBreakdownChart } from "../components/dashboard/RoomBreakdown";
-import { useTelemetryUpdates } from "../hooks/useWebSocket";
+import { DeviceStatusTable } from "../components/dashboard/DeviceTable";
+
+//
 
 const COLORS = [
   "#3b82f6",
@@ -39,6 +42,8 @@ export default function RichDashboard() {
   const [error, setError] = useState<
     string | null
   >(null);
+  const [lastUpdate, setLastUpdate] =
+    useState<Date>(new Date());
 
   // Filters
   const [deviceTypeFilter, setDeviceTypeFilter] =
@@ -144,12 +149,14 @@ export default function RichDashboard() {
         startTime,
         endTime,
       }).catch(() => [] as Telemetry[]);
+      // Sort asc by timestamp for integration
       merged.sort(
         (a, b) =>
           new Date(a.timestamp as any).getTime() -
           new Date(b.timestamp as any).getTime()
       );
       setReadings(merged);
+      setLastUpdate(new Date());
     } catch (err) {
       setError(
         err instanceof Error
@@ -174,31 +181,6 @@ export default function RichDashboard() {
   useEffect(() => {
     fetchData();
   }, [dateRange, deviceIdFilter, fetchData]);
-
-  // Live updates via WebSocket: append incoming telemetry updates
-  useTelemetryUpdates(
-    (update) => {
-      // Normalize to Telemetry shape used here
-      const newReading = {
-        deviceId: update.deviceId,
-        category: update.category,
-        value: update.value,
-        // Assume status on when value > 0 if not explicitly provided
-        status:
-          (update as any).status ??
-          update.value > 0,
-        timestamp: new Date(
-          update.timestamp as any
-        ).toISOString(),
-      } as Telemetry;
-
-      setReadings((prev) => [
-        ...prev,
-        newReading,
-      ]);
-    },
-    { autoConnect: true }
-  );
 
   // Derive enriched readings with device info and filters
   const enriched = useMemo(() => {
@@ -292,6 +274,7 @@ export default function RichDashboard() {
     return (totalWh / 1000).toFixed(2); // kWh
   }, [enriched, getWindowRange]);
 
+  // Chart data: last N points (still power over time)
   const chartData = useMemo(() => {
     return enriched.slice(-60).map((r) => ({
       time: new Date(
@@ -343,6 +326,9 @@ export default function RichDashboard() {
       }
     });
 
+    console.log(map);
+    console.log(Array.from(map.values()));
+
     return Array.from(map.values());
   }, [enriched]);
 
@@ -359,6 +345,18 @@ export default function RichDashboard() {
       ([room, power]) => ({ room, power })
     );
   }, [enriched]);
+
+  // Totals
+  const totalPower = useMemo(
+    () =>
+      enriched
+        .slice(0, 20)
+        .reduce(
+          (sum, r) => sum + (r.value || 0),
+          0
+        ),
+    [enriched]
+  );
 
   // Build table rows: base from devices, overlay telemetry stats
   const deviceTableRows = useMemo(() => {
@@ -396,6 +394,24 @@ export default function RichDashboard() {
     deviceTypeFilter,
     roomFilter,
   ]);
+
+  const rooms = useMemo(
+    () => [
+      "all",
+      ...Array.from(
+        new Set(
+          devices.map((d) => d.room || "Unknown")
+        )
+      ),
+    ],
+    [devices]
+  );
+  const deviceTypes = [
+    "all",
+    "plug",
+    "light",
+    "thermostat",
+  ];
 
   const formatRelativeTime = (iso: string) => {
     const seconds = Math.floor(
@@ -439,6 +455,12 @@ export default function RichDashboard() {
         background: "#f9fafb",
       }}
     >
+      <DashboardHeader
+        lastUpdatedLabel={`Updated ${formatRelativeTime(
+          lastUpdate.toISOString()
+        )}`}
+      />
+
       {error && (
         <div
           style={{
@@ -473,6 +495,31 @@ export default function RichDashboard() {
           padding: "24px 16px",
         }}
       >
+        <FiltersPanel
+          deviceType={deviceTypeFilter}
+          deviceId={deviceIdFilter}
+          room={roomFilter}
+          dateRange={dateRange}
+          deviceTypes={deviceTypes}
+          rooms={rooms}
+          devices={devices.map((d) => ({
+            deviceId: d.deviceId,
+            name: d.name || d.deviceId,
+          }))}
+          onChange={(next) => {
+            if (next.deviceType !== undefined)
+              setDeviceTypeFilter(
+                next.deviceType
+              );
+            if (next.room !== undefined)
+              setRoomFilter(next.room);
+            if (next.deviceId !== undefined)
+              setDeviceIdFilter(next.deviceId);
+            if (next.dateRange !== undefined)
+              setDateRange(next.dateRange);
+          }}
+        />
+
         <KeyMetrics
           totalEnergyKWh={totalEnergyKWh}
           activeDevices={devices.length}
