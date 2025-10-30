@@ -1,107 +1,146 @@
 # 🏠 Smart Home Energy Monitor
 
-An event-driven system to collect and visualize telemetry data from smart home devices such as plugs, lights, and thermostats.
+An event-driven system to collect and visualize telemetry data from smart home devices (plugs, lights, thermostats) with a NestJS backend, React frontend, and MongoDB storage.
 
 ---
 
 ## 🚀 Tech Stack
 
-- **Backend:** NestJS (TypeScript)
-- **Frontend:** React.js (TypeScript)
-- **Database:** MongoDB (NoSQL)
-- **Containerization:** Docker
-- **Testing:** Jest & React Testing Library
+- **Backend**: NestJS (TypeScript), Socket.IO (WebSocket)
+- **Frontend**: React (TypeScript), Vite, Recharts
+- **Database**: MongoDB
+- **Containerization**: Docker (optional)
+- **Testing**: Jest (backend)
 
 ---
 
-## 🎯 Objective
+## 🎯 Scenario Context & Objectives
 
-Build an end-to-end system to:
+This project demonstrates an end-to-end telemetry pipeline:
 
-- Receive telemetry data from smart devices
-- Store it in a database
-- Visualize it on a real-time dashboard
+- Ingest device telemetry via REST
+- Persist to MongoDB
+- Stream updates over WebSocket
+- Visualize in a frontend dashboard (device table and trends)
 
 ---
 
-## 🧱 Architecture Overview
+## 🧱 Architecture Notes
 
-### System Components
+### High-level design
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Smart Devices │───▶│   Backend API   │───▶│   MongoDB DB    │
-│   (IoT Sensors) │    │   (NestJS)      │    │   (Telemetry)   │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │
-                              ▼
-                       ┌─────────────────┐
-                       │   Frontend UI   │
-                       │   (React.js)    │
-                       └─────────────────┘
+┌─────────────────┐    ┌──────────────────────┐    ┌─────────────────┐
+│   Smart Devices │───▶│  Backend API (Nest)  │───▶│     MongoDB     │
+│  (HTTP → REST)  │    │  + Socket.IO Gateway │    │  (Telemetry)    │
+└─────────────────┘    └──────────┬───────────┘    └─────────────────┘
+                                   │
+                                   ▼
+                           ┌───────────────┐
+                           │ Frontend (UI) │
+                           │  React + Vite │
+                           └───────────────┘
 ```
 
-### Data Flow
+### Data flow
 
-1. **Ingestion**: Smart devices send telemetry data via HTTP POST
-2. **Processing**: NestJS backend validates and stores data in MongoDB
-3. **Retrieval**: Frontend queries API for real-time visualization
-4. **Analytics**: Backend provides aggregated statistics and insights
+1. Device → Backend: POST telemetry to REST endpoints
+2. Backend → DB: Validate, write to MongoDB
+3. Backend → Frontend: Emit `telemetry:new` via Socket.IO
+4. Frontend: Fetch devices/stats via REST and subscribe to WebSocket
+
+### Key decisions & trade-offs
+
+- Simple REST ingest with throttling for safety over complex streaming ingestion
+- Socket.IO for broad browser compatibility vs native WebSocket
+- MongoDB chosen for schemaless telemetry flexibility; indexing recommended for scale
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Setup & Run
 
 ### Prerequisites
 
 - Node.js 18+
 - MongoDB 6+
-- npm or yarn
+- npm
 
-### Installation
+### Environment variables
 
-1. **Clone the repository**
+- Backend (`backend/.env`):
+  - `MONGO_URI` (e.g., `mongodb://localhost:27017/smart-home-energy`)
+  - `PORT` (default 3000)
+  - `NODE_ENV` (`development` | `production`)
+- Frontend (Vite `frontend/.env.local`):
+  - `VITE_API_BASE_URL` (default `http://localhost:3000/api/v1`)
+  - `VITE_WS_BASE_URL` (default `http://localhost:3000`)
 
-   ```bash
-   git clone <repository-url>
-   cd smart-home-energy-monitor
-   ```
+### Non-Docker (local)
 
-2. **Install dependencies**
+```bash
+# 1) Install dependencies
+cd backend && npm install
+cd ../frontend && npm install
 
-   ```bash
-   # Backend dependencies
-   cd backend
-   npm install
+# 2) Start backend (http://localhost:3000, API under /api/v1)
+cd ../backend
+npm run start:dev
 
-   # Frontend dependencies (when implemented)
-   cd ../frontend
-   npm install
-   ```
+# 3) Start frontend (http://localhost:5173)
+cd ../frontend
+npm run dev
+```
 
-3. **Environment Setup**
+Ensure MongoDB is running and `MONGO_URI` is set.
 
-   ```bash
-   # Create environment file
-   cp backend/.env.example backend/.env
+### Docker (optional)
 
-   # Configure MongoDB connection
-   MONGO_URI=mongodb://localhost:27017/smart-home-energy
-   ```
+This repo does not include Docker files by default. Example `docker-compose.yml`:
 
-4. **Start the application**
+```yaml
+version: "3.8"
+services:
+  mongo:
+    image: mongo:6
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
 
-   ```bash
-   # Start backend
-   cd backend
-   npm run start:dev
+  backend:
+    build: ./backend
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/smart-home-energy
+      - NODE_ENV=production
+      - PORT=3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mongo
 
-   # Backend will be available at http://localhost:3000
-   ```
+  frontend:
+    build: ./frontend
+    environment:
+      - VITE_API_BASE_URL=http://localhost:3000/api/v1
+      - VITE_WS_BASE_URL=http://localhost:3000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data:
+```
+
+Run with:
+
+```bash
+docker compose up --build
+```
 
 ---
 
-## 📡 API Documentation
+## 📡 API Reference
 
 ### Base URL
 
@@ -109,88 +148,68 @@ Build an end-to-end system to:
 http://localhost:3000/api/v1
 ```
 
-### Core Endpoints
+### Devices
 
-#### Device Management
+- `GET /devices` — list devices
+- `GET /devices/:deviceId` — get device by id
+- `POST /devices` — create device
+- `PATCH /devices/:deviceId` — update device
+- `DELETE /devices/:deviceId` — delete device
 
-- `POST /devices` - Create a new device
-- `GET /devices` - List all devices
-- `GET /devices/:id` - Get device details
-- `PATCH /devices/:id` - Update device
-- `DELETE /devices/:id` - Remove device
+### Telemetry
 
-#### Telemetry Data
+- `GET /telemetry?deviceId&startTime&endTime` — query telemetry
+- `GET /telemetry/devices/:deviceId/stats?hours=24` — aggregated stats
+- `POST /telemetry/ingest` — single ingest
+- `POST /telemetry/ingest/batch` — batch ingest
+- `POST /telemetry/ingest/legacy` — accepts single or batch shape
+- `POST /telemetry/cleanup?daysToKeep=30` — delete old records
 
-- `POST /telemetry/ingest` - Single telemetry ingestion
-- `POST /telemetry/ingest/batch` - Batch telemetry ingestion
-- `GET /telemetry/devices/:id/readings` - Get device readings
-- `GET /telemetry/devices/:id/stats` - Get device statistics
-- `POST /telemetry/cleanup` - Cleanup old data
+### Health
 
-#### System Health
+- `GET /health` — health status
 
-- `GET /health` - System health check
+### WebSocket
 
-### Rate Limiting
-
-The API implements tiered rate limiting:
-
-- **Short-term**: 10 requests/second
-- **Medium-term**: 50 requests/10 seconds
-- **Long-term**: 200 requests/minute
+- Namespace: `/telemetry`
+- Event emitted by backend: `telemetry:new`
 
 ---
 
 ## 🧪 Testing
 
-### Running Tests
+Backend tests (run in `backend/`):
 
 ```bash
-# Unit tests
-npm run test
-
-# E2E tests
-npm run test:e2e
-
-# Test coverage
-npm run test:cov
+npm run test        # unit tests
+npm run test:e2e    # e2e tests
+npm run test:cov    # coverage
 ```
 
-### Postman Collections
-
-Comprehensive API testing collections are available in `backend/postman/`:
-
-- Device APIs collection
-- Telemetry APIs collection
-
-See `backend/postman/README.md` for detailed testing instructions.
+Frontend does not include automated tests yet.
 
 ---
 
-## 📊 Data Models
+## 📊 Data Models (simplified)
 
-### Device Schema
-
-```typescript
+```ts
+// Device
 {
-  deviceId: string;      // Unique identifier
-  name: string;         // Human-readable name
-  type: string;         // Device type (plug, light, thermostat)
-  category: string;      // Category (power, lighting, heating)
-  room?: string;        // Location
-  ratedWattage?: number; // Power rating
+  deviceId: string,
+  name?: string,
+  type?: string,
+  category?: string,
+  room?: string,
+  ratedWattage?: number,
 }
-```
 
-### Telemetry Schema
-
-```typescript
+// Telemetry
 {
-  deviceId: string; // Reference to device
-  category: string; // Data category
-  value: number; // Measured value (-1M to 1M)
-  status: boolean; // Device status
-  timestamp: Date; // Measurement time
+  deviceId: string,
+  category: string,
+  value: number,
+  status: string | boolean,
+  timestamp: string | Date,
 }
 ```
 
@@ -198,80 +217,41 @@ See `backend/postman/README.md` for detailed testing instructions.
 
 ## 🔧 Development
 
-### Project Structure
+### Project structure
 
 ```
 smart-home-energy-monitor/
-├── backend/                 # NestJS API server
-│   ├── src/
-│   │   ├── devices/        # Device management module
-│   │   ├── telemetry/      # Telemetry data module
-│   │   ├── health/         # Health check module
-│   │   └── common/         # Shared utilities
-│   ├── postman/           # API test collections
-│   └── test/              # Test files
-├── frontend/              # React frontend (to be implemented)
-└── docs/                  # Additional documentation
+├─ backend/                 # NestJS API server (throttling, MongoDB)
+│  ├─ src/
+│  │  ├─ devices/
+│  │  ├─ telemetry/         # REST + Socket.IO gateway (namespace /telemetry)
+│  │  └─ health/
+│  └─ test/
+└─ frontend/                # React (Vite), charts & tables
+   └─ src/
+      ├─ lib/api.ts         # REST client
+      ├─ lib/socket.ts      # WebSocket client
+      └─ config.ts          # Vite envs
 ```
 
-### Code Standards
+### Standards
 
-- **TypeScript** for type safety
-- **ESLint + Prettier** for code formatting
-- **Jest** for unit testing
-- **JSDoc** for code documentation
-- **Conventional Commits** for git messages
+- TypeScript, ESLint, Prettier, Jest (backend)
 
 ---
 
-## 🚀 Deployment
+## ⚠️ Known Limitations
 
-### Docker Support
-
-```bash
-# Build and run with Docker
-docker-compose up -d
-```
-
-### Environment Variables
-
-Required environment variables:
-
-- `MONGO_URI` - MongoDB connection string
-- `NODE_ENV` - Environment (development/production)
-- `PORT` - Server port (default: 3000)
+- No authentication/authorization.
+- No persistence of device metadata beyond basic fields.
 
 ---
 
-## 📈 Performance Considerations
+## 📝 Assumptions
 
-- **Rate Limiting**: Prevents API abuse
-- **Data Cleanup**: Automatic old data removal
-- **Batch Processing**: Efficient bulk data ingestion
-- **Indexing**: Optimized MongoDB queries
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Follow code standards
-4. Add tests for new features
-5. Submit a pull request
+- Single MongoDB instance is acceptable for demo purposes.
+- Client and server run on localhost during development (`5173` for UI, `3000` for API/WS).
+- Basic rate limiting profiles (short/medium/long) are sufficient for ingest protection.
+- The smarhome devices send the energy consumption in Watts when ingesting telementry.
 
 ---
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
----
-
-## 📞 Support
-
-For questions or issues:
-
-- Create an issue in the repository
-- Check the API documentation in `backend/postman/README.md`
-- Review test cases for usage examples
