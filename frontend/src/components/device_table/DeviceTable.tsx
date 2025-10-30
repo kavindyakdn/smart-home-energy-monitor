@@ -1,4 +1,8 @@
-import React from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   Power,
   Lightbulb,
@@ -43,6 +47,40 @@ type DeviceTableProps = {
 export function DeviceStatusTable({
   rows,
 }: DeviceTableProps) {
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+  const safeRows = rows ?? [];
+
+  const totalPages = useMemo(() => {
+    return Math.max(
+      1,
+      Math.ceil((safeRows.length || 0) / pageSize)
+    );
+  }, [safeRows.length]);
+
+  useEffect(() => {
+    // Clamp current page if data size changes
+    setPage((prev) => {
+      if (prev > totalPages) return totalPages;
+      if (prev < 1) return 1;
+      return prev;
+    });
+  }, [totalPages]);
+
+  const pagedRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    return safeRows.slice(start, end);
+  }, [safeRows, page]);
+
+  const total = safeRows.length;
+  const startItem =
+    total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endItem = Math.min(
+    page * pageSize,
+    total
+  );
+
   return (
     <div className="dt-card">
       <div className="dt-header">
@@ -66,8 +104,8 @@ export function DeviceStatusTable({
               </th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((d) => {
+          <tbody key={page}>
+            {pagedRows.map((d) => {
               const Icon =
                 DEVICE_ICONS[d.deviceType] ||
                 Power;
@@ -116,6 +154,36 @@ export function DeviceStatusTable({
             })}
           </tbody>
         </table>
+      </div>
+      <div className="dt-footer">
+        <div className="dt-range">
+          {startItem}–{endItem} of {total}
+        </div>
+        <div className="dt-pager">
+          <button
+            className="dt-btn"
+            onClick={() =>
+              setPage((p) => Math.max(1, p - 1))
+            }
+            disabled={page <= 1}
+          >
+            Prev
+          </button>
+          <span className="dt-page">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            className="dt-btn"
+            onClick={() =>
+              setPage((p) =>
+                Math.min(totalPages, p + 1)
+              )
+            }
+            disabled={page >= totalPages}
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );
