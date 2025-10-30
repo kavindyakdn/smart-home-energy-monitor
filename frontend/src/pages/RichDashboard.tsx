@@ -13,6 +13,7 @@ import {
   getTelemetry,
 } from "../lib/api";
 import type { Device, Telemetry } from "../types";
+import { KeyMetrics } from "../components/dashboard/KeyMetrics";
 import { DeviceStatusTable } from "../components/dashboard/DeviceTable";
 import { useTelemetryUpdates } from "../hooks/useWebSocket";
 
@@ -229,6 +230,57 @@ export default function RichDashboard() {
     roomFilter,
   ]);
 
+  // Compute total energy (kWh) over window by integrating per device
+  const totalEnergyKWh = useMemo(() => {
+    const { startTime, endTime } =
+      getWindowRange();
+    const windowStart = new Date(
+      startTime
+    ).getTime();
+    const windowEnd = new Date(endTime).getTime();
+
+    // Group by device
+    const byDevice = new Map<
+      string,
+      { t: number; v: number }[]
+    >();
+    enriched.forEach((r) => {
+      const t = new Date(r.timestamp).getTime();
+      if (t < windowStart || t > windowEnd)
+        return;
+      const arr = byDevice.get(r.deviceId) || [];
+      arr.push({ t, v: r.value });
+      byDevice.set(r.deviceId, arr);
+    });
+
+    let totalWh = 0;
+    byDevice.forEach((arr) => {
+      if (arr.length === 0) return;
+      // sort by time asc
+      arr.sort((a, b) => a.t - b.t);
+      // Integrate from first point to last point (piecewise constant using left value)
+      for (let i = 0; i < arr.length; i++) {
+        const current = arr[i];
+        const nextT =
+          i < arr.length - 1
+            ? arr[i + 1].t
+            : windowEnd;
+        const fromT = Math.max(
+          current.t,
+          windowStart
+        );
+        const toT = Math.min(nextT, windowEnd);
+        if (toT > fromT) {
+          const hours =
+            (toT - fromT) / (1000 * 60 * 60);
+          totalWh += current.v * hours; // W * h = Wh
+        }
+      }
+    });
+
+    return (totalWh / 1000).toFixed(2); // kWh
+  }, [enriched, getWindowRange]);
+
   // Device stats (aggregate per device)
   const deviceStats = useMemo(() => {
     const map = new Map<
@@ -383,6 +435,13 @@ export default function RichDashboard() {
           padding: "24px 16px",
         }}
       >
+        <KeyMetrics
+          totalEnergyKWh={totalEnergyKWh}
+          activeDevices={devices.length}
+          totalDevices={deviceStats.length}
+          readingsCount={enriched.length}
+        />
+
         <DeviceStatusTable
           rows={deviceTableRows.map((r) => ({
             ...r,
