@@ -12,10 +12,6 @@ import { CreateTelemetryDto } from './dto/create-telemetry.dto';
 import { BatchTelemetryDto } from './dto/batch-telemetry.dto';
 import { Device } from '../devices/schemas/device.schema';
 
-/**
- * Service for managing telemetry data from smart home devices
- * Handles data ingestion, retrieval, analytics, and cleanup operations
- */
 @Injectable()
 export class TelemetryService {
   private readonly logger = new Logger(TelemetryService.name);
@@ -25,19 +21,14 @@ export class TelemetryService {
     @InjectModel(Device.name) private deviceModel: Model<Device>,
   ) {}
 
-  /**
-   * Ingests a single telemetry record from a smart device
-   */
   async ingestSingle(data: CreateTelemetryDto): Promise<Telemetry> {
     try {
       this.logger.log(
         `Ingesting single telemetry for device: ${data.deviceId}`,
       );
 
-      // DTO validation handles most validation, just add business logic validation
       this.validateBusinessRules(data);
 
-      // Ensure device exists
       const exists = await this.deviceModel.exists({ deviceId: data.deviceId });
       if (!exists) {
         throw new NotFoundException(`Device '${data.deviceId}' not found`);
@@ -58,12 +49,10 @@ export class TelemetryService {
         throw error;
       }
 
-      // Let MongoDB validation errors pass through naturally
       if (error.name === 'ValidationError' || error.name === 'CastError') {
         throw new BadRequestException(error.message);
       }
 
-      // Only handle critical errors
       if (
         error.name === 'MongoNetworkError' ||
         error.name === 'MongoTimeoutError'
@@ -73,7 +62,6 @@ export class TelemetryService {
         );
       }
 
-      // Re-throw known exceptions
       if (error instanceof BadRequestException) {
         throw error;
       }
@@ -84,26 +72,20 @@ export class TelemetryService {
     }
   }
 
-  /**
-   * Ingests multiple telemetry records in a single batch operation
-   */
   async ingestBatch(batch: BatchTelemetryDto): Promise<Telemetry[]> {
     try {
       this.logger.log(
         `Ingesting batch telemetry with ${batch.data.length} records`,
       );
 
-      // Validate batch size only
       if (batch.data.length > 1000) {
         throw new BadRequestException('Batch size cannot exceed 1000 records');
       }
 
-      // Validate business rules for each record
       batch.data.forEach((data, index) => {
         this.validateBusinessRules(data, index);
       });
 
-      // Validate devices exist; ingest only for known devices
       const uniqueIds = Array.from(new Set(batch.data.map((d) => d.deviceId)));
       const existing = await this.deviceModel
         .find({ deviceId: { $in: uniqueIds } })
@@ -121,7 +103,6 @@ export class TelemetryService {
       });
 
       if (validRecords.length === 0) {
-        // Nothing to insert; surface a 400 to indicate all were invalid
         throw new BadRequestException(
           'No telemetry ingested: all records referenced unknown devices',
         );
@@ -130,7 +111,7 @@ export class TelemetryService {
       const savedTelemetry = await this.telemetryModel.insertMany(
         validRecords,
         {
-          ordered: false, // Continue inserting even if some fail
+          ordered: false,
         },
       );
 
@@ -144,19 +125,16 @@ export class TelemetryService {
         error.stack,
       );
 
-      // Handle bulk write errors
       if (error.name === 'BulkWriteError') {
         const writeErrors = error.writeErrors || [];
         const errorMessages = writeErrors.map((err) => err.errmsg).join('; ');
         throw new BadRequestException(`Batch insert failed: ${errorMessages}`);
       }
 
-      // Re-throw known exceptions
       if (error instanceof BadRequestException) {
         throw error;
       }
 
-      // Handle connection errors
       if (
         error.name === 'MongoNetworkError' ||
         error.name === 'MongoTimeoutError'
@@ -172,12 +150,8 @@ export class TelemetryService {
     }
   }
 
-  /**
-   * Retrieves aggregated statistics for a specific device over a time period
-   */
   async getDeviceStats(deviceId: string, hours: number = 24): Promise<any> {
     try {
-      // Simple validation
       if (!deviceId?.trim()) {
         throw new BadRequestException('Device ID is required');
       }
@@ -243,9 +217,6 @@ export class TelemetryService {
     }
   }
 
-  /**
-   * Deletes old telemetry data to maintain database performance
-   */
   async deleteOldTelemetry(daysToKeep: number = 30): Promise<number> {
     try {
       if (daysToKeep <= 0 || daysToKeep > 365) {
@@ -325,25 +296,16 @@ export class TelemetryService {
     }
   }
 
-  /**
-   * Finds telemetry records by optional filters. Supports filtering by:
-   * - deviceId (exact)
-   * - deviceType (via device lookup)
-   * - room (via device lookup)
-   * - time range (timestamp between startTime and endTime)
-   */
   async findTelemetry(filters: {
     deviceId?: string;
-    deviceType?: string;
-    room?: string;
     startTime?: Date;
     endTime?: Date;
   }): Promise<any[]> {
     try {
-      const { deviceId, deviceType, room, startTime, endTime } = filters;
+      const { deviceId, startTime, endTime } = filters;
 
       this.logger.debug(
-        `findTelemetry called with filters: ${JSON.stringify({ deviceId, deviceType, room, startTime, endTime })}`,
+        `findTelemetry called with filters: ${JSON.stringify({ deviceId, startTime, endTime })}`,
       );
 
       // Build timestamp criteria (robust to invalid or swapped dates)
@@ -376,132 +338,12 @@ export class TelemetryService {
           `findTelemetry received invalid dates; startTime=${startTime} endTime=${endTime}`,
         );
       }
-
-      // If we need deviceType or room, use aggregation with $lookup to devices
-      const requiresDeviceJoin = Boolean(deviceType?.trim() || room?.trim());
-      this.logger.debug(
-        `findTelemetry branch: ${requiresDeviceJoin ? 'aggregate+$lookup' : 'simple find'}`,
-      );
-
-      if (requiresDeviceJoin) {
-        const pipeline: any[] = [];
-
-        const matchStage: any = {};
-        if (deviceId?.trim()) {
-          matchStage.deviceId = deviceId.trim();
-        }
-        // For aggregation, coalesce timestamp/createdAt for matching
-        if (Object.keys(timeCriteria).length > 0) {
-          pipeline.push({
-            $addFields: {
-              __ts: { $ifNull: ['$timestamp', '$createdAt'] },
-            },
-          });
-          matchStage.__ts = timeCriteria;
-        }
-        if (Object.keys(matchStage).length > 0) {
-          pipeline.push({ $match: matchStage });
-        }
-
-        // Debug: count docs matching before lookup (use direct fields, not __ts)
-        try {
-          const countCriteria: any = {};
-          if (deviceId?.trim()) {
-            countCriteria.deviceId = deviceId.trim();
-          }
-          if (Object.keys(timeCriteria).length > 0) {
-            countCriteria.$or = [
-              { timestamp: timeCriteria },
-              { createdAt: timeCriteria },
-            ];
-          }
-          const preLookupCount =
-            await this.telemetryModel.countDocuments(countCriteria);
-          this.logger.debug(
-            `findTelemetry pre-lookup match count: ${preLookupCount}`,
-          );
-        } catch (e) {
-          this.logger.debug(
-            `findTelemetry pre-lookup count failed: ${(e as Error).message}`,
-          );
-        }
-
-        pipeline.push(
-          {
-            $lookup: {
-              from: 'devices',
-              localField: 'deviceId',
-              foreignField: 'deviceId',
-              as: 'device',
-            },
-          },
-          { $unwind: '$device' },
-        );
-
-        const postLookupMatch: any = {};
-        if (deviceType?.trim()) {
-          postLookupMatch['device.type'] = deviceType.trim();
-        }
-        if (room?.trim()) {
-          // Case-insensitive exact match on room
-          const escapeRegex = (s: string) =>
-            s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          postLookupMatch['device.room'] = {
-            $regex: `^${escapeRegex(room.trim())}$`,
-            $options: 'i',
-          };
-        }
-        if (Object.keys(postLookupMatch).length > 0) {
-          pipeline.push({ $match: postLookupMatch });
-        }
-
-        // Project only telemetry fields back
-        pipeline.push({
-          $project: {
-            _id: 1,
-            deviceId: 1,
-            category: 1,
-            value: 1,
-            status: 1,
-            timestamp: 1,
-            createdAt: 1,
-            updatedAt: 1,
-          },
-        });
-
-        this.logger.debug(
-          `findTelemetry aggregate pipeline: ${JSON.stringify(pipeline)}`,
-        );
-
-        // Debug: post-lookup count via $count
-        try {
-          const countStage = await this.telemetryModel
-            .aggregate([...pipeline, { $count: 'n' }])
-            .exec();
-          const postLookupCount = countStage?.[0]?.n || 0;
-          this.logger.debug(
-            `findTelemetry post-lookup match count: ${postLookupCount}`,
-          );
-        } catch (e) {
-          this.logger.debug(
-            `findTelemetry post-lookup count failed: ${(e as Error).message}`,
-          );
-        }
-
-        const results = await this.telemetryModel.aggregate(pipeline).exec();
-        this.logger.debug(
-          `findTelemetry aggregate result count: ${results?.length ?? 0}`,
-        );
-        return results;
-      }
-
-      // Simple find when not filtering by device fields
+      // Simple find by deviceId and time range
       const criteria: any = {};
       if (deviceId?.trim()) {
         criteria.deviceId = deviceId.trim();
       }
       if (Object.keys(timeCriteria).length > 0) {
-        // For simple find, match either timestamp or createdAt
         criteria.$or = [
           { timestamp: timeCriteria },
           { createdAt: timeCriteria },
