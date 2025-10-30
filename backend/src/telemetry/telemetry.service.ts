@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   InternalServerErrorException,
+  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -9,6 +10,7 @@ import { Model } from 'mongoose';
 import { Telemetry } from './schemas/telemetry.schema';
 import { CreateTelemetryDto } from './dto/create-telemetry.dto';
 import { BatchTelemetryDto } from './dto/batch-telemetry.dto';
+import { Device } from '../devices/schemas/device.schema';
 
 /**
  * Service for managing telemetry data from smart home devices
@@ -20,6 +22,7 @@ export class TelemetryService {
 
   constructor(
     @InjectModel(Telemetry.name) private telemetryModel: Model<Telemetry>,
+    @InjectModel(Device.name) private deviceModel: Model<Device>,
   ) {}
 
   /**
@@ -34,6 +37,12 @@ export class TelemetryService {
       // DTO validation handles most validation, just add business logic validation
       this.validateBusinessRules(data);
 
+      // Ensure device exists
+      const exists = await this.deviceModel.exists({ deviceId: data.deviceId });
+      if (!exists) {
+        throw new NotFoundException(`Device '${data.deviceId}' not found`);
+      }
+
       const telemetry = new this.telemetryModel(data);
       const savedTelemetry = await telemetry.save();
 
@@ -44,6 +53,10 @@ export class TelemetryService {
         `Failed to ingest single telemetry: ${error.message}`,
         error.stack,
       );
+
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
 
       // Let MongoDB validation errors pass through naturally
       if (error.name === 'ValidationError' || error.name === 'CastError') {
@@ -90,9 +103,36 @@ export class TelemetryService {
         this.validateBusinessRules(data, index);
       });
 
-      const savedTelemetry = await this.telemetryModel.insertMany(batch.data, {
-        ordered: false, // Continue inserting even if some fail
+      // Validate devices exist; ingest only for known devices
+      const uniqueIds = Array.from(new Set(batch.data.map((d) => d.deviceId)));
+      const existing = await this.deviceModel
+        .find({ deviceId: { $in: uniqueIds } })
+        .select('deviceId')
+        .lean();
+      const existingSet = new Set(existing.map((d: any) => d.deviceId));
+      const validRecords = batch.data.filter((d) => {
+        const ok = existingSet.has(d.deviceId);
+        if (!ok) {
+          this.logger.warn(
+            `Skipping telemetry for unknown device '${d.deviceId}'`,
+          );
+        }
+        return ok;
       });
+
+      if (validRecords.length === 0) {
+        // Nothing to insert; surface a 400 to indicate all were invalid
+        throw new BadRequestException(
+          'No telemetry ingested: all records referenced unknown devices',
+        );
+      }
+
+      const savedTelemetry = await this.telemetryModel.insertMany(
+        validRecords,
+        {
+          ordered: false, // Continue inserting even if some fail
+        },
+      );
 
       this.logger.log(
         `Successfully ingested ${savedTelemetry.length} telemetry records`,
