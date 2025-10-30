@@ -14,6 +14,7 @@ import {
 } from "../lib/api";
 import type { Device, Telemetry } from "../types";
 import { KeyMetrics } from "../components/dashboard/KeyMetrics";
+import { TrendChart } from "../components/dashboard/TrendChart";
 import { DeviceStatusTable } from "../components/dashboard/DeviceTable";
 import { useTelemetryUpdates } from "../hooks/useWebSocket";
 
@@ -281,6 +282,19 @@ export default function RichDashboard() {
     return (totalWh / 1000).toFixed(2); // kWh
   }, [enriched, getWindowRange]);
 
+  const chartData = useMemo(() => {
+    return enriched.slice(-60).map((r) => ({
+      time: new Date(
+        r.timestamp
+      ).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      power: r.value,
+      device: r.deviceName,
+    }));
+  }, [enriched]);
+
   // Device stats (aggregate per device)
   const deviceStats = useMemo(() => {
     const map = new Map<
@@ -441,6 +455,17 @@ export default function RichDashboard() {
           totalDevices={deviceStats.length}
           readingsCount={enriched.length}
         />
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "2fr 1fr",
+            gap: 24,
+            marginBottom: 24,
+          }}
+        >
+          <TrendChart data={chartData} />
+        </div>
 
         <DeviceStatusTable
           rows={deviceTableRows.map((r) => ({
