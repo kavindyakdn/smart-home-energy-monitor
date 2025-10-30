@@ -1,3 +1,4 @@
+import React, { useMemo, useState } from "react";
 import {
   Power,
   Lightbulb,
@@ -41,6 +42,51 @@ type DeviceTableProps = {
 export function DeviceStatusTable({
   rows,
 }: DeviceTableProps) {
+  const [currentPage, setCurrentPage] =
+    useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const totalItems = rows.length;
+  const totalPages = Math.max(
+    1,
+    Math.ceil(totalItems / pageSize)
+  );
+
+  const pagedRows = useMemo(() => {
+    const startIndex =
+      (currentPage - 1) * pageSize;
+    return rows.slice(
+      startIndex,
+      startIndex + pageSize
+    );
+  }, [rows, currentPage, pageSize]);
+
+  const startItem =
+    totalItems === 0
+      ? 0
+      : (currentPage - 1) * pageSize + 1;
+  const endItem = Math.min(
+    currentPage * pageSize,
+    totalItems
+  );
+
+  function goToPrev() {
+    setCurrentPage((p) => Math.max(1, p - 1));
+  }
+
+  function goToNext() {
+    setCurrentPage((p) =>
+      Math.min(totalPages, p + 1)
+    );
+  }
+
+  function onPageSizeChange(
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) {
+    const newSize = parseInt(e.target.value, 10);
+    setPageSize(newSize);
+    setCurrentPage(1);
+  }
   return (
     <div
       style={{
@@ -141,7 +187,7 @@ export function DeviceStatusTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((d) => {
+            {pagedRows.map((d) => {
               const Icon =
                 DEVICE_ICONS[d.deviceType] ||
                 Power;
@@ -241,6 +287,122 @@ export function DeviceStatusTable({
             })}
           </tbody>
         </table>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 16px",
+          borderTop: "1px solid #e5e7eb",
+          gap: 12,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 12,
+              color: "#6b7280",
+            }}
+          >
+            Rows per page:
+          </span>
+          <select
+            value={pageSize}
+            onChange={onPageSizeChange}
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 6,
+              padding: "6px 8px",
+              fontSize: 12,
+              color: "#111827",
+              background: "#fff",
+            }}
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+          </select>
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            color: "#6b7280",
+          }}
+        >
+          {startItem}-{endItem} of {totalItems}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <button
+            onClick={goToPrev}
+            disabled={currentPage === 1}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 6,
+              border: "1px solid #e5e7eb",
+              background:
+                currentPage === 1
+                  ? "#f9fafb"
+                  : "#fff",
+              color:
+                currentPage === 1
+                  ? "#9ca3af"
+                  : "#111827",
+              cursor:
+                currentPage === 1
+                  ? "not-allowed"
+                  : "pointer",
+              fontSize: 12,
+            }}
+          >
+            Prev
+          </button>
+          <span
+            style={{
+              fontSize: 12,
+              color: "#6b7280",
+            }}
+          >
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            onClick={goToNext}
+            disabled={currentPage === totalPages}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 6,
+              border: "1px solid #e5e7eb",
+              background:
+                currentPage === totalPages
+                  ? "#f9fafb"
+                  : "#fff",
+              color:
+                currentPage === totalPages
+                  ? "#9ca3af"
+                  : "#111827",
+              cursor:
+                currentPage === totalPages
+                  ? "not-allowed"
+                  : "pointer",
+              fontSize: 12,
+            }}
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );
