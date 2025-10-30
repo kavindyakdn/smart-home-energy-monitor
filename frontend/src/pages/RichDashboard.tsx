@@ -404,6 +404,20 @@ export default function RichDashboard() {
     return `${Math.floor(seconds / 3600)}h ago`;
   };
 
+  const formatDateTime = (iso: string) => {
+    if (!iso || iso === "-") return "-";
+    const d = new Date(iso);
+    const pad = (n: number) =>
+      String(n).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    const mm = pad(d.getMonth() + 1);
+    const dd = pad(d.getDate());
+    const hh = pad(d.getHours());
+    const mi = pad(d.getMinutes());
+    const ss = pad(d.getSeconds());
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+  };
+
   if (loading && readings.length === 0) {
     return (
       <div className="rd-loading">
@@ -461,9 +475,7 @@ export default function RichDashboard() {
             lastUpdate:
               r.lastUpdate === "-"
                 ? r.lastUpdate
-                : formatRelativeTime(
-                    r.lastUpdate
-                  ),
+                : formatDateTime(r.lastUpdate),
           }))}
         />
       </main>
