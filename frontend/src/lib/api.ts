@@ -216,32 +216,6 @@ export async function deleteDevice(
  */
 
 /**
- * Get telemetry readings for a specific device
- * Supports filtering by time range and pagination
- */
-export async function getDeviceReadings(
-  deviceId: string,
-  params?: Omit<ReadingsQueryParams, "deviceId">
-): Promise<Telemetry[]> {
-  const queryParams = {
-    startTime: params?.startTime,
-    endTime: params?.endTime,
-    limit: Math.min(
-      params?.limit || DEFAULT_PAGE_LIMIT,
-      MAX_PAGE_LIMIT
-    ),
-  };
-
-  const queryString =
-    buildQueryString(queryParams);
-  return fetchApi<Telemetry[]>(
-    `/telemetry/devices/${encodeURIComponent(
-      deviceId
-    )}/readings${queryString}`
-  );
-}
-
-/**
  * Get aggregated statistics for a device over a time period
  */
 export async function getDeviceStats(
@@ -257,36 +231,45 @@ export async function getDeviceStats(
 }
 
 /**
- * Get all recent telemetry readings across all devices
- * Note: This is a convenience function that may need backend support
- * For now, we'll fetch devices first, then readings
+ * Get telemetry with optional filters
+ * Filters: deviceId, deviceType, room, startTime, endTime
  */
-export async function getAllReadings(
-  params?: Omit<ReadingsQueryParams, "deviceId">
-): Promise<Telemetry[]> {
-  // First get all devices
-  const devices = await getDevices();
+export async function getTelemetry(params?: {
+  deviceId?: string;
+  deviceType?: string;
+  room?: string;
+  startTime?: string | Date;
+  endTime?: string | Date;
+}): Promise<Telemetry[]> {
+  const {
+    deviceId,
+    deviceType,
+    room,
+    startTime,
+    endTime,
+  } = params || {};
 
-  // Then fetch readings for each device (in parallel)
-  const readingPromises = devices.map((device) =>
-    getDeviceReadings(
-      device.deviceId,
-      params
-    ).catch(() => [])
+  const normalizedParams = {
+    deviceId,
+    deviceType,
+    room,
+    startTime:
+      startTime instanceof Date
+        ? startTime.toISOString()
+        : startTime,
+    endTime:
+      endTime instanceof Date
+        ? endTime.toISOString()
+        : endTime,
+  };
+
+  const queryString = buildQueryString(
+    normalizedParams
   );
-
-  const allReadings = await Promise.all(
-    readingPromises
+  return fetchApi<Telemetry[]>(
+    `/telemetry${queryString}`
   );
-
-  // Flatten and sort by timestamp
-  return allReadings.flat().sort((a, b) => {
-    const timeA = new Date(a.timestamp).getTime();
-    const timeB = new Date(b.timestamp).getTime();
-    return timeB - timeA; // Descending order
-  });
 }
-
 /**
  * HEALTH CHECK API
  */

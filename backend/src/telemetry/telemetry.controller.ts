@@ -9,7 +9,8 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, ThrottlerGuard, SkipThrottle } from '@nestjs/throttler';
+import { UseGuards } from '@nestjs/common';
 import { TelemetryService } from './telemetry.service';
 import { CreateTelemetryDto } from './dto/create-telemetry.dto';
 import { BatchTelemetryDto } from './dto/batch-telemetry.dto';
@@ -21,10 +22,44 @@ export class TelemetryController {
   constructor(private readonly telemetryService: TelemetryService) {}
 
   /**
+   * Retrieve telemetry with optional filters
+   * Query params: deviceId, deviceType, room, startTime, endTime
+   */
+  @Get()
+  @SkipThrottle()
+  async getTelemetry(
+    @Query('deviceId') deviceId?: string,
+    @Query('deviceType') deviceType?: string,
+    @Query('room') room?: string,
+    @Query('startTime') startTime?: string,
+    @Query('endTime') endTime?: string,
+  ) {
+    const start = startTime ? new Date(startTime) : undefined;
+    const end = endTime ? new Date(endTime) : undefined;
+
+    this.logger.log(
+      `Fetching telemetry with filters: deviceId=${deviceId || ''}, deviceType=${
+        deviceType || ''
+      }, room=${room || ''}, startTime=${startTime || ''}, endTime=${
+        endTime || ''
+      }`,
+    );
+
+    return this.telemetryService.findTelemetry({
+      deviceId,
+      deviceType,
+      room,
+      startTime: start,
+      endTime: end,
+    });
+  }
+
+  /**
    * Ingest single telemetry record
    */
   @Post('ingest')
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(ThrottlerGuard)
   @Throttle({ short: { limit: 50, ttl: 1000 } }) // 50 requests per second
   async ingestSingle(@Body() createTelemetryDto: CreateTelemetryDto) {
     this.logger.log(
@@ -38,6 +73,7 @@ export class TelemetryController {
    */
   @Post('ingest/batch')
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(ThrottlerGuard)
   @Throttle({ medium: { limit: 20, ttl: 10000 } }) // 20 requests per 10 seconds
   async ingestBatch(@Body() batchTelemetryDto: BatchTelemetryDto) {
     this.logger.log(
@@ -50,7 +86,7 @@ export class TelemetryController {
    * Get device statistics
    */
   @Get('devices/:deviceId/stats')
-  @Throttle({ medium: { limit: 30, ttl: 10000 } }) // 30 requests per 10 seconds
+  @SkipThrottle()
   async getDeviceStats(
     @Param('deviceId') deviceId: string,
     @Query('hours') hours?: string,
@@ -63,31 +99,11 @@ export class TelemetryController {
   }
 
   /**
-   * Get telemetry readings for a specific device
-   */
-  @Get('devices/:deviceId/readings')
-  @Throttle({ medium: { limit: 40, ttl: 10000 } }) // 40 requests per 10 seconds
-  async getDeviceReadings(
-    @Param('deviceId') deviceId: string,
-    @Query('startTime') startTime?: string,
-    @Query('endTime') endTime?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const limitNumber = limit ? parseInt(limit, 10) : 100;
-    this.logger.log(`Retrieving telemetry readings for device: ${deviceId}`);
-    return this.telemetryService.getReadings(
-      deviceId,
-      startTime,
-      endTime,
-      limitNumber,
-    );
-  }
-
-  /**
    * Delete old telemetry data (admin endpoint)
    */
   @Post('cleanup')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(ThrottlerGuard)
   @Throttle({ long: { limit: 5, ttl: 60000 } }) // 5 requests per minute
   async deleteOldTelemetry(@Query('daysToKeep') daysToKeep?: string) {
     const daysToKeepNumber = daysToKeep ? parseInt(daysToKeep, 10) : 30;
@@ -108,6 +124,7 @@ export class TelemetryController {
    */
   @Post('ingest/legacy')
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(ThrottlerGuard)
   @Throttle({ medium: { limit: 25, ttl: 10000 } }) // 25 requests per 10 seconds
   async ingestLegacy(@Body() body: CreateTelemetryDto | BatchTelemetryDto) {
     this.logger.log('Received legacy telemetry ingestion request');

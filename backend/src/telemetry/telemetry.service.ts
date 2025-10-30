@@ -154,68 +154,6 @@ export class TelemetryService {
   }
 
   /**
-   * Retrieves telemetry readings for a specific device with optional filtering
-   */
-  async getReadings(
-    deviceId: string,
-    startTime?: string,
-    endTime?: string,
-    limit: number = 100,
-  ): Promise<Telemetry[]> {
-    try {
-      this.logger.log(`Retrieving telemetry readings for device: ${deviceId}`);
-
-      // Simple validation - let MongoDB handle the rest
-      if (limit > 1000) {
-        limit = 1000; // Cap silently instead of throwing
-      }
-
-      const filter: any = {
-        deviceId: deviceId.trim(),
-      };
-      if (startTime || endTime) {
-        filter.timestamp = {};
-        if (startTime) {
-          filter.timestamp.$gte = new Date(startTime);
-        }
-        if (endTime) {
-          filter.timestamp.$lte = new Date(endTime);
-        }
-      }
-
-      const readings = await this.telemetryModel
-        .find(filter)
-        .sort({ timestamp: -1 })
-        .limit(limit)
-        .exec();
-
-      this.logger.log(
-        `Successfully retrieved ${readings.length} telemetry readings`,
-      );
-      return readings;
-    } catch (error) {
-      this.logger.error(
-        `Failed to retrieve telemetry readings: ${error.message}`,
-        error.stack,
-      );
-
-      // Only handle critical errors
-      if (
-        error.name === 'MongoNetworkError' ||
-        error.name === 'MongoTimeoutError'
-      ) {
-        throw new InternalServerErrorException(
-          'Database connection error. Please try again later.',
-        );
-      }
-
-      throw new InternalServerErrorException(
-        'Failed to retrieve telemetry readings. Please try again later.',
-      );
-    }
-  }
-
-  /**
    * Retrieves aggregated statistics for a specific device over a time period
    */
   async getDeviceStats(deviceId: string, hours: number = 24): Promise<any> {
@@ -364,6 +302,227 @@ export class TelemetryService {
     if (!deviceIdRegex.test(data.deviceId)) {
       throw new BadRequestException(
         `${prefix}Device ID contains invalid characters`,
+      );
+    }
+  }
+
+  /**
+   * Finds telemetry records by optional filters. Supports filtering by:
+   * - deviceId (exact)
+   * - deviceType (via device lookup)
+   * - room (via device lookup)
+   * - time range (timestamp between startTime and endTime)
+   */
+  async findTelemetry(filters: {
+    deviceId?: string;
+    deviceType?: string;
+    room?: string;
+    startTime?: Date;
+    endTime?: Date;
+  }): Promise<any[]> {
+    try {
+      const { deviceId, deviceType, room, startTime, endTime } = filters;
+
+      this.logger.debug(
+        `findTelemetry called with filters: ${JSON.stringify({ deviceId, deviceType, room, startTime, endTime })}`,
+      );
+
+      // Build timestamp criteria (robust to invalid or swapped dates)
+      let startDate: Date | undefined =
+        startTime instanceof Date && !isNaN(startTime.getTime())
+          ? startTime
+          : undefined;
+      let endDate: Date | undefined =
+        endTime instanceof Date && !isNaN(endTime.getTime())
+          ? endTime
+          : undefined;
+
+      // If both exist and are inverted, swap
+      if (startDate && endDate && startDate > endDate) {
+        const tmp = startDate;
+        startDate = endDate;
+        endDate = tmp;
+      }
+
+      const timeCriteria: any = {};
+      if (startDate) {
+        timeCriteria.$gte = startDate;
+      }
+      if (endDate) {
+        timeCriteria.$lte = endDate;
+      }
+
+      if (Object.keys(timeCriteria).length === 0 && (startTime || endTime)) {
+        this.logger.debug(
+          `findTelemetry received invalid dates; startTime=${startTime} endTime=${endTime}`,
+        );
+      }
+
+      // If we need deviceType or room, use aggregation with $lookup to devices
+      const requiresDeviceJoin = Boolean(deviceType?.trim() || room?.trim());
+      this.logger.debug(
+        `findTelemetry branch: ${requiresDeviceJoin ? 'aggregate+$lookup' : 'simple find'}`,
+      );
+
+      if (requiresDeviceJoin) {
+        const pipeline: any[] = [];
+
+        const matchStage: any = {};
+        if (deviceId?.trim()) {
+          matchStage.deviceId = deviceId.trim();
+        }
+        // For aggregation, coalesce timestamp/createdAt for matching
+        if (Object.keys(timeCriteria).length > 0) {
+          pipeline.push({
+            $addFields: {
+              __ts: { $ifNull: ['$timestamp', '$createdAt'] },
+            },
+          });
+          matchStage.__ts = timeCriteria;
+        }
+        if (Object.keys(matchStage).length > 0) {
+          pipeline.push({ $match: matchStage });
+        }
+
+        // Debug: count docs matching before lookup (use direct fields, not __ts)
+        try {
+          const countCriteria: any = {};
+          if (deviceId?.trim()) {
+            countCriteria.deviceId = deviceId.trim();
+          }
+          if (Object.keys(timeCriteria).length > 0) {
+            countCriteria.$or = [
+              { timestamp: timeCriteria },
+              { createdAt: timeCriteria },
+            ];
+          }
+          const preLookupCount =
+            await this.telemetryModel.countDocuments(countCriteria);
+          this.logger.debug(
+            `findTelemetry pre-lookup match count: ${preLookupCount}`,
+          );
+        } catch (e) {
+          this.logger.debug(
+            `findTelemetry pre-lookup count failed: ${(e as Error).message}`,
+          );
+        }
+
+        pipeline.push(
+          {
+            $lookup: {
+              from: 'devices',
+              localField: 'deviceId',
+              foreignField: 'deviceId',
+              as: 'device',
+            },
+          },
+          { $unwind: '$device' },
+        );
+
+        const postLookupMatch: any = {};
+        if (deviceType?.trim()) {
+          postLookupMatch['device.type'] = deviceType.trim();
+        }
+        if (room?.trim()) {
+          // Case-insensitive exact match on room
+          const escapeRegex = (s: string) =>
+            s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          postLookupMatch['device.room'] = {
+            $regex: `^${escapeRegex(room.trim())}$`,
+            $options: 'i',
+          };
+        }
+        if (Object.keys(postLookupMatch).length > 0) {
+          pipeline.push({ $match: postLookupMatch });
+        }
+
+        // Project only telemetry fields back
+        pipeline.push({
+          $project: {
+            _id: 1,
+            deviceId: 1,
+            category: 1,
+            value: 1,
+            status: 1,
+            timestamp: 1,
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        });
+
+        this.logger.debug(
+          `findTelemetry aggregate pipeline: ${JSON.stringify(pipeline)}`,
+        );
+
+        // Debug: post-lookup count via $count
+        try {
+          const countStage = await this.telemetryModel
+            .aggregate([...pipeline, { $count: 'n' }])
+            .exec();
+          const postLookupCount = countStage?.[0]?.n || 0;
+          this.logger.debug(
+            `findTelemetry post-lookup match count: ${postLookupCount}`,
+          );
+        } catch (e) {
+          this.logger.debug(
+            `findTelemetry post-lookup count failed: ${(e as Error).message}`,
+          );
+        }
+
+        const results = await this.telemetryModel.aggregate(pipeline).exec();
+        this.logger.debug(
+          `findTelemetry aggregate result count: ${results?.length ?? 0}`,
+        );
+        return results;
+      }
+
+      // Simple find when not filtering by device fields
+      const criteria: any = {};
+      if (deviceId?.trim()) {
+        criteria.deviceId = deviceId.trim();
+      }
+      if (Object.keys(timeCriteria).length > 0) {
+        // For simple find, match either timestamp or createdAt
+        criteria.$or = [
+          { timestamp: timeCriteria },
+          { createdAt: timeCriteria },
+        ];
+      }
+
+      this.logger.debug(
+        `findTelemetry find criteria: ${JSON.stringify(criteria)}`,
+      );
+      const results = await this.telemetryModel
+        .find(criteria)
+        .sort({ timestamp: -1 })
+        .lean()
+        .exec();
+
+      this.logger.debug(
+        `findTelemetry find result count: ${results?.length ?? 0}`,
+      );
+      return results;
+    } catch (error) {
+      this.logger.error(
+        `Failed to find telemetry: ${error.message}`,
+        error.stack,
+      );
+
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      if (
+        error.name === 'MongoNetworkError' ||
+        error.name === 'MongoTimeoutError'
+      ) {
+        throw new InternalServerErrorException(
+          'Database connection error. Please try again later.',
+        );
+      }
+
+      throw new InternalServerErrorException(
+        'Failed to retrieve telemetry. Please try again later.',
       );
     }
   }

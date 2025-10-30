@@ -7,8 +7,8 @@ async function bootstrap() {
   // Enable CORS for frontend communication
   app.enableCors({
     origin: [
-      'http://localhost:3000', // React default port
-      'http://127.0.0.1:3000', // Alternative localhost
+      'http://localhost:5173', // React def ault port
+      'http://127.0.0.1:5173', // Alternative localhost
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
