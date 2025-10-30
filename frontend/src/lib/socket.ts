@@ -6,42 +6,56 @@ import {
   WS_BASE_URL,
   WS_NAMESPACE,
 } from "../config";
-import type { TelemetryUpdate } from "../types";
+import type {
+  TelemetryUpdate,
+  SocketConnectionState,
+} from "../types";
 
 class WebSocketService {
   private socket: Socket | null = null;
+  private connectionState: SocketConnectionState =
+    "disconnected";
+  private stateSubscribers = new Set<
+    (state: SocketConnectionState) => void
+  >();
 
   connect(): void {
     if (this.socket) return;
 
     const socketUrl = `${WS_BASE_URL}${WS_NAMESPACE}`;
+    this.setConnectionState("connecting");
     this.socket = io(socketUrl, {
       transports: ["websocket"],
       reconnection: true,
+      withCredentials: true,
     });
 
-    this.socket.on("connect", () =>
+    this.socket.on("connect", () => {
+      this.setConnectionState("connected");
       console.log(
         "[WebSocket] Connected:",
         this.socket?.id
-      )
-    );
+      );
+    });
 
-    this.socket.on("disconnect", (reason) =>
+    this.socket.on("disconnect", (reason) => {
+      this.setConnectionState("disconnected");
       console.log(
         "[WebSocket] Disconnected:",
         reason
-      )
-    );
+      );
+    });
 
-    this.socket.on("connect_error", (err) =>
-      console.error("[WebSocket] Error:", err)
-    );
+    this.socket.on("connect_error", (err) => {
+      this.setConnectionState("error");
+      console.error("[WebSocket] Error:", err);
+    });
   }
 
   disconnect(): void {
     this.socket?.disconnect();
     this.socket = null;
+    this.setConnectionState("disconnected");
   }
 
   subscribeToTelemetry(
@@ -54,6 +68,30 @@ class WebSocketService {
         "telemetry:update",
         callback
       );
+  }
+
+  getConnectionState(): SocketConnectionState {
+    return this.connectionState;
+  }
+
+  onConnectionStateChange(
+    subscriber: (
+      state: SocketConnectionState
+    ) => void
+  ): () => void {
+    this.stateSubscribers.add(subscriber);
+    return () => {
+      this.stateSubscribers.delete(subscriber);
+    };
+  }
+
+  private setConnectionState(
+    state: SocketConnectionState
+  ): void {
+    this.connectionState = state;
+    this.stateSubscribers.forEach((cb) =>
+      cb(state)
+    );
   }
 }
 

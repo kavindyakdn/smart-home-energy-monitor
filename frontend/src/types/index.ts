@@ -94,6 +94,15 @@ export interface TelemetryUpdate {
 }
 
 /**
+ * WebSocket connection state for UI and hooks
+ */
+export type SocketConnectionState =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "error";
+
+/**
  * Filter state for the dashboard
  */
 export interface DashboardFilters {

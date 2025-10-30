@@ -3,16 +3,11 @@
  * Provides type-safe functions for all REST endpoints
  */
 
-import {
-  API_BASE_URL,
-  DEFAULT_PAGE_LIMIT,
-  MAX_PAGE_LIMIT,
-} from "../config";
+import { API_BASE_URL } from "../config";
 import type {
   Telemetry,
   Device,
   DeviceStats,
-  ReadingsQueryParams,
   ApiError,
 } from "../types";
 

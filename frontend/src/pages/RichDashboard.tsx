@@ -19,6 +19,10 @@ import { FiltersPanel } from "../components/filters/Filters";
 import { TrendChart } from "../components/trend_chart/TrendChart";
 import { DeviceStatusTable } from "../components/device_table/DeviceTable";
 import "./RichDashboard.css";
+import {
+  WS_BASE_URL,
+  WS_NAMESPACE,
+} from "../config";
 
 export default function RichDashboard() {
   const [devices, setDevices] = useState<
@@ -153,9 +157,10 @@ export default function RichDashboard() {
 
   useEffect(() => {
     const socket = io(
-      "http://localhost:3000/telemetry",
+      `${WS_BASE_URL}${WS_NAMESPACE}`,
       {
         withCredentials: true,
+        transports: ["websocket"],
       }
     );
 
