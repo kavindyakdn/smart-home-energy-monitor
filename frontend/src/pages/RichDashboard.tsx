@@ -16,7 +16,17 @@ import type { Device, Telemetry } from "../types";
 import { KeyMetrics } from "../components/dashboard/KeyMetrics";
 import { TrendChart } from "../components/dashboard/TrendChart";
 import { DeviceStatusTable } from "../components/dashboard/DeviceTable";
+import { RoomBreakdownChart } from "../components/dashboard/RoomBreakdown";
 import { useTelemetryUpdates } from "../hooks/useWebSocket";
+
+const COLORS = [
+  "#3b82f6",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#8b5cf6",
+  "#ec4899",
+];
 
 export default function RichDashboard() {
   const [devices, setDevices] = useState<
@@ -336,6 +346,20 @@ export default function RichDashboard() {
     return Array.from(map.values());
   }, [enriched]);
 
+  // Room breakdown
+  const roomBreakdown = useMemo(() => {
+    const map = new Map<string, number>();
+    enriched.forEach((r) => {
+      map.set(
+        r.room,
+        (map.get(r.room) || 0) + (r.value || 0)
+      );
+    });
+    return Array.from(map.entries()).map(
+      ([room, power]) => ({ room, power })
+    );
+  }, [enriched]);
+
   // Build table rows: base from devices, overlay telemetry stats
   const deviceTableRows = useMemo(() => {
     const filteredDevices = devices.filter(
@@ -465,6 +489,10 @@ export default function RichDashboard() {
           }}
         >
           <TrendChart data={chartData} />
+          <RoomBreakdownChart
+            data={roomBreakdown}
+            colors={COLORS}
+          />
         </div>
 
         <DeviceStatusTable
