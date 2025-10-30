@@ -5,6 +5,7 @@ import {
   Cell,
   Tooltip,
 } from "recharts";
+import "./RoomBreakdown.css";
 
 type RoomBreakdownItem = {
   room: string;
@@ -21,25 +22,9 @@ export function RoomBreakdownChart({
   colors,
 }: RoomBreakdownProps) {
   return (
-    <div
-      style={{
-        background: "#fff",
-        borderRadius: 8,
-        padding: 16,
-        border: "1px solid #e5e7eb",
-      }}
-    >
-      <h3
-        style={{
-          fontSize: 16,
-          fontWeight: 600,
-          color: "#111827",
-          marginBottom: 12,
-        }}
-      >
-        Room Breakdown
-      </h3>
-      <div style={{ width: "100%", height: 300 }}>
+    <div className="rb-card">
+      <h3 className="rb-title">Room Breakdown</h3>
+      <div className="rb-chart">
         <ResponsiveContainer
           width="100%"
           height="100%"

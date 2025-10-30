@@ -1,4 +1,5 @@
 import { Filter as FilterIcon } from "lucide-react";
+import "./Filters.css";
 
 type FiltersProps = {
   deviceType: string;
@@ -31,51 +32,14 @@ export function FiltersPanel({
   onChange,
 }: FiltersProps) {
   return (
-    <div
-      style={{
-        background: "#fff",
-        borderRadius: 8,
-        padding: 16,
-        marginBottom: 24,
-        border: "1px solid #e5e7eb",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          marginBottom: 12,
-        }}
-      >
+    <div className="fp-panel">
+      <div className="fp-header">
         <FilterIcon />
-        <h2
-          style={{
-            fontSize: 16,
-            fontWeight: 600,
-            color: "#111827",
-          }}
-        >
-          Filters
-        </h2>
+        <h2 className="fp-title">Filters</h2>
       </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "1fr 1fr 1.5fr 2fr",
-          gap: 12,
-        }}
-      >
+      <div className="fp-grid">
         <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: 12,
-              color: "#374151",
-              marginBottom: 6,
-            }}
-          >
+          <label className="fp-label">
             Device Type
           </label>
           <select
@@ -85,12 +49,7 @@ export function FiltersPanel({
                 deviceType: e.target.value,
               })
             }
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              border: "1px solid #d1d5db",
-              borderRadius: 8,
-            }}
+            className="fp-select"
           >
             {deviceTypes.map((t) => (
               <option key={t} value={t}>
@@ -103,27 +62,13 @@ export function FiltersPanel({
           </select>
         </div>
         <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: 12,
-              color: "#374151",
-              marginBottom: 6,
-            }}
-          >
-            Room
-          </label>
+          <label className="fp-label">Room</label>
           <select
             value={room}
             onChange={(e) =>
               onChange({ room: e.target.value })
             }
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              border: "1px solid #d1d5db",
-              borderRadius: 8,
-            }}
+            className="fp-select"
           >
             {rooms.map((r) => (
               <option key={r} value={r}>
@@ -133,14 +78,7 @@ export function FiltersPanel({
           </select>
         </div>
         <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: 12,
-              color: "#374151",
-              marginBottom: 6,
-            }}
-          >
+          <label className="fp-label">
             Device
           </label>
           <select
@@ -165,12 +103,7 @@ export function FiltersPanel({
                 deviceId: e.target.value,
               })
             }
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              border: "1px solid #d1d5db",
-              borderRadius: 8,
-            }}
+            className="fp-select"
           >
             <option value="all">
               All Devices
@@ -185,35 +118,12 @@ export function FiltersPanel({
             ))}
           </select>
         </div>
-        <div
-          style={{
-            gridColumn: "span 1 / span 1",
-          }}
-        >
-          <label
-            style={{
-              display: "block",
-              fontSize: 12,
-              color: "#374151",
-              marginBottom: 6,
-            }}
-          >
-            Time Range
+        <div className="fp-time">
+          <label className="fp-label">
+            Date Range
           </label>
           {/* Single visual input that holds a start and end date selector */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto 1fr",
-              alignItems: "center",
-              gap: 8,
-              width: "100%",
-              padding: "6px 10px",
-              border: "1px solid #d1d5db",
-              borderRadius: 8,
-              background: "#fff",
-            }}
-          >
+          <div className="fp-datewrap">
             <input
               type="date"
               value={dateRange.start}
@@ -225,19 +135,9 @@ export function FiltersPanel({
                   },
                 })
               }
-              style={{
-                border: "none",
-                outline: "none",
-                padding: 0,
-                fontSize: 14,
-              }}
+              className="fp-dateinput"
             />
-            <span
-              style={{
-                color: "#6b7280",
-                fontSize: 12,
-              }}
-            >
+            <span className="fp-date-sep">
               to
             </span>
             <input
@@ -251,12 +151,7 @@ export function FiltersPanel({
                   },
                 })
               }
-              style={{
-                border: "none",
-                outline: "none",
-                padding: 0,
-                fontSize: 14,
-              }}
+              className="fp-dateinput"
             />
           </div>
         </div>

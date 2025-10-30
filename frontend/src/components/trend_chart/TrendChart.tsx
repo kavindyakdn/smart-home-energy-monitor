@@ -8,12 +8,12 @@ import {
   Legend,
   Line,
 } from "recharts";
+import "./TrendChart.css";
 
 type TrendChartProps = {
   data: Array<{
-    time: string;
-    power: number;
-    device: string;
+    date: string; // day of month label, e.g., "28"
+    energyKWh: number; // total energy per day
   }>;
 };
 
@@ -21,25 +21,11 @@ export function TrendChart({
   data,
 }: TrendChartProps) {
   return (
-    <div
-      style={{
-        background: "#fff",
-        borderRadius: 8,
-        padding: 16,
-        border: "1px solid #e5e7eb",
-      }}
-    >
-      <h3
-        style={{
-          fontSize: 16,
-          fontWeight: 600,
-          color: "#111827",
-          marginBottom: 12,
-        }}
-      >
+    <div className="tc-card">
+      <h3 className="tc-title">
         Power Usage Trend
       </h3>
-      <div style={{ width: "100%", height: 300 }}>
+      <div className="tc-chart">
         <ResponsiveContainer
           width="100%"
           height="100%"
@@ -50,34 +36,34 @@ export function TrendChart({
               stroke="#e5e7eb"
             />
             <XAxis
-              dataKey="time"
+              dataKey="date"
               stroke="#6b7280"
-              style={{ fontSize: 12 }}
+              tick={{
+                fontSize: 12,
+                fill: "#6b7280",
+              }}
             />
             <YAxis
               stroke="#6b7280"
-              style={{ fontSize: 12 }}
+              tick={{
+                fontSize: 12,
+                fill: "#6b7280",
+              }}
               label={{
-                value: "Power (W)",
+                value: "Energy (kWh)",
                 angle: -90,
                 position: "insideLeft",
               }}
             />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "#fff",
-                border: "1px solid #e5e7eb",
-                borderRadius: 8,
-              }}
-            />
+            <Tooltip />
             <Legend />
             <Line
               type="monotone"
-              dataKey="power"
+              dataKey="energyKWh"
               stroke="#3b82f6"
               strokeWidth={2}
-              dot={false}
-              name="Power (W)"
+              dot={true}
+              name="Energy (kWh)"
             />
           </LineChart>
         </ResponsiveContainer>

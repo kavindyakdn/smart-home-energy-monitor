@@ -14,12 +14,13 @@ import {
   getTelemetry,
 } from "../lib/api";
 import type { Device, Telemetry } from "../types";
-import { DashboardHeader } from "../components/dashboard/Header";
-import { FiltersPanel } from "../components/dashboard/Filters";
-import { KeyMetrics } from "../components/dashboard/KeyMetrics";
-import { TrendChart } from "../components/dashboard/TrendChart";
-import { RoomBreakdownChart } from "../components/dashboard/RoomBreakdown";
-import { DeviceStatusTable } from "../components/dashboard/DeviceTable";
+import { DashboardHeader } from "../components/header/Header";
+import { FiltersPanel } from "../components/filters/Filters";
+import { KeyMetrics } from "../components/key_metrics/KeyMetrics";
+import { TrendChart } from "../components/trend_chart/TrendChart";
+import { RoomBreakdownChart } from "../components/room_breakdown/RoomBreakdown";
+import { DeviceStatusTable } from "../components/device_table/DeviceTable";
+import "./RichDashboard.css";
 
 const COLORS = [
   "#3b82f6",
@@ -266,61 +267,206 @@ export default function RichDashboard() {
     ).getTime();
     const windowEnd = new Date(endTime).getTime();
 
-    // Group by device
-    const byDevice = new Map<
-      string,
-      { t: number; v: number }[]
-    >();
-    enriched.forEach((r) => {
-      const t = new Date(r.timestamp).getTime();
-      if (t < windowStart || t > windowEnd)
-        return;
-      const arr = byDevice.get(r.deviceId) || [];
-      arr.push({ t, v: r.value });
-      byDevice.set(r.deviceId, arr);
-    });
-
-    let totalWh = 0;
-    byDevice.forEach((arr) => {
-      if (arr.length === 0) return;
-      // sort by time asc
-      arr.sort((a, b) => a.t - b.t);
-      // Integrate from first point to last point (piecewise constant using left value)
-      for (let i = 0; i < arr.length; i++) {
-        const current = arr[i];
-        const nextT =
-          i < arr.length - 1
-            ? arr[i + 1].t
-            : windowEnd;
-        const fromT = Math.max(
-          current.t,
-          windowStart
-        );
-        const toT = Math.min(nextT, windowEnd);
-        if (toT > fromT) {
-          const hours =
-            (toT - fromT) / (1000 * 60 * 60);
-          totalWh += current.v * hours; // W * h = Wh
+    const computeEnergyWh = (
+      startMs: number,
+      endMs: number
+    ) => {
+      const byDevice = new Map<
+        string,
+        { t: number; v: number }[]
+      >();
+      enriched.forEach((r) => {
+        const t = new Date(r.timestamp).getTime();
+        if (t < startMs || t > endMs) return;
+        const arr =
+          byDevice.get(r.deviceId) || [];
+        arr.push({ t, v: r.value });
+        byDevice.set(r.deviceId, arr);
+      });
+      let totalWhLocal = 0;
+      byDevice.forEach((arr) => {
+        if (arr.length === 0) return;
+        arr.sort((a, b) => a.t - b.t);
+        for (let i = 0; i < arr.length; i++) {
+          const current = arr[i];
+          const nextT =
+            i < arr.length - 1
+              ? arr[i + 1].t
+              : endMs;
+          const fromT = Math.max(
+            current.t,
+            startMs
+          );
+          const toT = Math.min(nextT, endMs);
+          if (toT > fromT) {
+            const hours =
+              (toT - fromT) / (1000 * 60 * 60);
+            totalWhLocal += current.v * hours;
+          }
         }
-      }
-    });
+      });
+      return totalWhLocal;
+    };
 
-    return (totalWh / 1000).toFixed(2); // kWh
+    const totalWh = computeEnergyWh(
+      windowStart,
+      windowEnd
+    );
+    return (totalWh / 1000).toFixed(2);
   }, [enriched, getWindowRange]);
 
-  // Chart data: last N points (still power over time)
-  const chartData = useMemo(() => {
-    return enriched.slice(-60).map((r) => ({
-      time: new Date(
-        r.timestamp
-      ).toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      power: r.value,
-      device: r.deviceName,
-    }));
-  }, [enriched]);
+  // (removed legacy per-reading chart data)
+
+  // Daily energy aggregation (kWh) over selected date range
+  const dailyEnergyData = useMemo(() => {
+    if (!enriched.length) {
+      // Build empty range based on selected dates so x-axis still shows days
+      const buildEmpty = () => {
+        const result: {
+          date: string;
+          energyKWh: number;
+        }[] = [];
+        const [ys, ms, ds] = dateRange.start
+          .split("-")
+          .map((x) => parseInt(x, 10));
+        const [ye, me, de] = dateRange.end
+          .split("-")
+          .map((x) => parseInt(x, 10));
+        const cur = new Date(
+          ys,
+          ms - 1,
+          ds,
+          0,
+          0,
+          0,
+          0
+        );
+        const end = new Date(
+          ye,
+          me - 1,
+          de,
+          0,
+          0,
+          0,
+          0
+        );
+        while (cur.getTime() <= end.getTime()) {
+          result.push({
+            date: String(cur.getDate()),
+            energyKWh: 0,
+          });
+          cur.setDate(cur.getDate() + 1);
+        }
+        return result;
+      };
+      return buildEmpty();
+    }
+
+    // Shared integrator to ensure identical logic with total
+    const computeEnergyWh = (
+      startMs: number,
+      endMs: number
+    ) => {
+      const byDevice = new Map<
+        string,
+        { t: number; v: number }[]
+      >();
+      enriched.forEach((r) => {
+        const t = new Date(r.timestamp).getTime();
+        if (t < startMs || t > endMs) return;
+        const arr =
+          byDevice.get(r.deviceId) || [];
+        arr.push({ t, v: r.value });
+        byDevice.set(r.deviceId, arr);
+      });
+      let totalWhLocal = 0;
+      byDevice.forEach((arr) => {
+        if (arr.length === 0) return;
+        arr.sort((a, b) => a.t - b.t);
+        for (let i = 0; i < arr.length; i++) {
+          const current = arr[i];
+          const nextT =
+            i < arr.length - 1
+              ? arr[i + 1].t
+              : endMs;
+          const fromT = Math.max(
+            current.t,
+            startMs
+          );
+          const toT = Math.min(nextT, endMs);
+          if (toT > fromT) {
+            const hours =
+              (toT - fromT) / (1000 * 60 * 60);
+            totalWhLocal += current.v * hours;
+          }
+        }
+      });
+      return totalWhLocal;
+    };
+
+    const startParts = dateRange.start
+      .split("-")
+      .map((x) => parseInt(x, 10));
+    const endParts = dateRange.end
+      .split("-")
+      .map((x) => parseInt(x, 10));
+    const current = new Date(
+      startParts[0],
+      startParts[1] - 1,
+      startParts[2],
+      0,
+      0,
+      0,
+      0
+    );
+    const last = new Date(
+      endParts[0],
+      endParts[1] - 1,
+      endParts[2],
+      0,
+      0,
+      0,
+      0
+    );
+
+    const out: {
+      date: string;
+      energyKWh: number;
+    }[] = [];
+
+    while (current.getTime() <= last.getTime()) {
+      const dayStart = new Date(
+        current.getFullYear(),
+        current.getMonth(),
+        current.getDate(),
+        0,
+        0,
+        0,
+        0
+      ).getTime();
+      const dayEnd = new Date(
+        current.getFullYear(),
+        current.getMonth(),
+        current.getDate(),
+        23,
+        59,
+        59,
+        999
+      ).getTime();
+
+      const totalWh = computeEnergyWh(
+        dayStart,
+        dayEnd
+      );
+      out.push({
+        date: String(current.getDate()),
+        energyKWh: totalWh / 1000,
+      });
+      current.setDate(current.getDate() + 1);
+    }
+
+    return out;
+  }, [enriched, dateRange]);
 
   // Device stats (aggregate per device)
   const deviceStats = useMemo(() => {
@@ -380,17 +526,7 @@ export default function RichDashboard() {
     );
   }, [enriched]);
 
-  // Totals
-  const totalPower = useMemo(
-    () =>
-      enriched
-        .slice(0, 20)
-        .reduce(
-          (sum, r) => sum + (r.value || 0),
-          0
-        ),
-    [enriched]
-  );
+  // (removed unused totalPower aggregation)
 
   // Build table rows: base from devices, overlay telemetry stats
   const deviceTableRows = useMemo(() => {
@@ -461,20 +597,8 @@ export default function RichDashboard() {
 
   if (loading && readings.length === 0) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <div
-          style={{
-            textAlign: "center",
-            color: "#4b5563",
-          }}
-        >
+      <div className="rd-loading">
+        <div className="rd-loading-inner">
           <RefreshCw className="w-12 h-12" />
           <p>Loading dashboard...</p>
         </div>
@@ -483,12 +607,7 @@ export default function RichDashboard() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#f9fafb",
-      }}
-    >
+    <div className="rd-dashboard">
       <DashboardHeader
         lastUpdatedLabel={`Updated ${formatRelativeTime(
           lastUpdate.toISOString()
@@ -496,39 +615,17 @@ export default function RichDashboard() {
       />
 
       {error && (
-        <div
-          style={{
-            maxWidth: 1120,
-            margin: "0 auto",
-            padding: "16px",
-          }}
-        >
-          <div
-            style={{
-              background: "#fef2f2",
-              border: "1px solid #fecaca",
-              borderRadius: 8,
-              padding: 12,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
+        <div className="rd-error-container">
+          <div className="rd-error-box">
             <AlertCircle color="#ef4444" />
-            <p style={{ color: "#991b1b" }}>
+            <p className="rd-error-text">
               {error}
             </p>
           </div>
         </div>
       )}
 
-      <main
-        style={{
-          maxWidth: 1120,
-          margin: "0 auto",
-          padding: "24px 16px",
-        }}
-      >
+      <main className="rd-main">
         <FiltersPanel
           deviceType={deviceTypeFilter}
           deviceId={deviceIdFilter}
@@ -561,15 +658,10 @@ export default function RichDashboard() {
           readingsCount={enriched.length}
         />
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "2fr 1fr",
-            gap: 24,
-            marginBottom: 24,
-          }}
-        >
-          <TrendChart data={chartData} />
+        <div className="rd-grid">
+          <TrendChart data={dailyEnergyData} />
+        </div>
+        <div className="rd-grid">
           <RoomBreakdownChart
             data={roomBreakdown}
             colors={COLORS}
