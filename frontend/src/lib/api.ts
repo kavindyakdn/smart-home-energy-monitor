@@ -236,23 +236,14 @@ export async function getDeviceStats(
  */
 export async function getTelemetry(params?: {
   deviceId?: string;
-  deviceType?: string;
-  room?: string;
   startTime?: string | Date;
   endTime?: string | Date;
 }): Promise<Telemetry[]> {
-  const {
-    deviceId,
-    deviceType,
-    room,
-    startTime,
-    endTime,
-  } = params || {};
+  const { deviceId, startTime, endTime } =
+    params || {};
 
   const normalizedParams = {
     deviceId,
-    deviceType,
-    room,
     startTime:
       startTime instanceof Date
         ? startTime.toISOString()

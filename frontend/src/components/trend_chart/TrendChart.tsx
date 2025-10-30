@@ -12,8 +12,8 @@ import "./TrendChart.css";
 
 type TrendChartProps = {
   data: Array<{
-    date: string; // day of month label, e.g., "28"
-    energyKWh: number; // total energy per day
+    date: string;
+    energyKWh: number;
   }>;
 };
 
@@ -41,6 +41,11 @@ export function TrendChart({
               tick={{
                 fontSize: 12,
                 fill: "#6b7280",
+              }}
+              label={{
+                value: "Time",
+                position: "insideBottom",
+                offset: -10,
               }}
             />
             <YAxis

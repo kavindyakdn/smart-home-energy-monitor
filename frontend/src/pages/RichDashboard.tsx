@@ -16,20 +16,9 @@ import {
 import type { Device, Telemetry } from "../types";
 import { DashboardHeader } from "../components/header/Header";
 import { FiltersPanel } from "../components/filters/Filters";
-import { KeyMetrics } from "../components/key_metrics/KeyMetrics";
 import { TrendChart } from "../components/trend_chart/TrendChart";
-import { RoomBreakdownChart } from "../components/room_breakdown/RoomBreakdown";
 import { DeviceStatusTable } from "../components/device_table/DeviceTable";
 import "./RichDashboard.css";
-
-const COLORS = [
-  "#3b82f6",
-  "#10b981",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-  "#ec4899",
-];
 
 export default function RichDashboard() {
   const [devices, setDevices] = useState<
@@ -46,10 +35,6 @@ export default function RichDashboard() {
     useState<Date>(new Date());
 
   // Filters
-  const [deviceTypeFilter, setDeviceTypeFilter] =
-    useState<string>("all");
-  const [roomFilter, setRoomFilter] =
-    useState<string>("all");
   const [deviceIdFilter, setDeviceIdFilter] =
     useState<string>("all");
   const [dateRange, setDateRange] = useState<{
@@ -132,24 +117,14 @@ export default function RichDashboard() {
       const { startTime, endTime } =
         getWindowRange();
 
-      // Fetch telemetry using new unified endpoint with optional filters
       const merged = await getTelemetry({
         deviceId:
           deviceIdFilter !== "all"
             ? deviceIdFilter
             : undefined,
-        deviceType:
-          deviceTypeFilter !== "all"
-            ? deviceTypeFilter
-            : undefined,
-        room:
-          roomFilter !== "all"
-            ? roomFilter
-            : undefined,
         startTime,
         endTime,
       }).catch(() => [] as Telemetry[]);
-      // Sort asc by timestamp for integration
       merged.sort(
         (a, b) =>
           new Date(a.timestamp as any).getTime() -
@@ -166,23 +141,16 @@ export default function RichDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [
-    getWindowRange,
-    deviceIdFilter,
-    deviceTypeFilter,
-    roomFilter,
-  ]);
+  }, [getWindowRange, deviceIdFilter]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // Re-fetch when date range or selected device changes
   useEffect(() => {
     fetchData();
   }, [dateRange, deviceIdFilter, fetchData]);
 
-  // WebSocket: subscribe to real-time telemetry updates
   useEffect(() => {
     const socket = io(
       "http://localhost:3000/telemetry",
@@ -206,9 +174,7 @@ export default function RichDashboard() {
       setLastUpdate(new Date());
     };
 
-    socket.on("connect", () => {
-      // Optional: console.log("WS connected", socket.id);
-    });
+    socket.on("connect", () => {});
     socket.on("telemetry:new", onNewTelemetry);
 
     return () => {
@@ -217,7 +183,6 @@ export default function RichDashboard() {
     };
   }, []);
 
-  // Derive enriched readings with device info and filters
   const enriched = useMemo(() => {
     return readings
       .map((r) => {
@@ -237,16 +202,6 @@ export default function RichDashboard() {
         };
       })
       .filter((x) =>
-        deviceTypeFilter === "all"
-          ? true
-          : x.deviceType === deviceTypeFilter
-      )
-      .filter((x) =>
-        roomFilter === "all"
-          ? true
-          : x.room === roomFilter
-      )
-      .filter((x) =>
         deviceIdFilter === "all"
           ? true
           : x.deviceId === deviceIdFilter
@@ -254,73 +209,12 @@ export default function RichDashboard() {
   }, [
     readings,
     deviceIdToDevice,
-    deviceTypeFilter,
-    roomFilter,
+    deviceIdFilter,
   ]);
-
-  // Compute total energy (kWh) over window by integrating per device
-  const totalEnergyKWh = useMemo(() => {
-    const { startTime, endTime } =
-      getWindowRange();
-    const windowStart = new Date(
-      startTime
-    ).getTime();
-    const windowEnd = new Date(endTime).getTime();
-
-    const computeEnergyWh = (
-      startMs: number,
-      endMs: number
-    ) => {
-      const byDevice = new Map<
-        string,
-        { t: number; v: number }[]
-      >();
-      enriched.forEach((r) => {
-        const t = new Date(r.timestamp).getTime();
-        if (t < startMs || t > endMs) return;
-        const arr =
-          byDevice.get(r.deviceId) || [];
-        arr.push({ t, v: r.value });
-        byDevice.set(r.deviceId, arr);
-      });
-      let totalWhLocal = 0;
-      byDevice.forEach((arr) => {
-        if (arr.length === 0) return;
-        arr.sort((a, b) => a.t - b.t);
-        for (let i = 0; i < arr.length; i++) {
-          const current = arr[i];
-          const nextT =
-            i < arr.length - 1
-              ? arr[i + 1].t
-              : endMs;
-          const fromT = Math.max(
-            current.t,
-            startMs
-          );
-          const toT = Math.min(nextT, endMs);
-          if (toT > fromT) {
-            const hours =
-              (toT - fromT) / (1000 * 60 * 60);
-            totalWhLocal += current.v * hours;
-          }
-        }
-      });
-      return totalWhLocal;
-    };
-
-    const totalWh = computeEnergyWh(
-      windowStart,
-      windowEnd
-    );
-    return (totalWh / 1000).toFixed(2);
-  }, [enriched, getWindowRange]);
-
-  // (removed legacy per-reading chart data)
 
   // Daily energy aggregation (kWh) over selected date range
   const dailyEnergyData = useMemo(() => {
     if (!enriched.length) {
-      // Build empty range based on selected dates so x-axis still shows days
       const buildEmpty = () => {
         const result: {
           date: string;
@@ -468,120 +362,30 @@ export default function RichDashboard() {
     return out;
   }, [enriched, dateRange]);
 
-  // Device stats (aggregate per device)
-  const deviceStats = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        deviceId: string;
-        deviceName: string;
-        deviceType: string;
-        room: string;
-        status: string;
-        lastUpdate: string;
-        totalPower: number;
-      }
-    >();
-
-    enriched.forEach((r) => {
-      if (!map.has(r.deviceId)) {
-        map.set(r.deviceId, {
-          deviceId: r.deviceId,
-          deviceName: r.deviceName,
-          deviceType: r.deviceType,
-          room: r.room,
-          status: r.status,
-          lastUpdate: r.timestamp,
-          totalPower: 0,
-        });
-      }
-      const stats = map.get(r.deviceId)!;
-      stats.totalPower += r.value || 0;
-      if (
-        new Date(r.timestamp) >
-        new Date(stats.lastUpdate)
-      ) {
-        stats.status = r.status;
-        stats.lastUpdate = r.timestamp;
-      }
-    });
-
-    console.log(map);
-    console.log(Array.from(map.values()));
-
-    return Array.from(map.values());
-  }, [enriched]);
-
-  // Room breakdown
-  const roomBreakdown = useMemo(() => {
-    const map = new Map<string, number>();
-    enriched.forEach((r) => {
-      map.set(
-        r.room,
-        (map.get(r.room) || 0) + (r.value || 0)
-      );
-    });
-    return Array.from(map.entries()).map(
-      ([room, power]) => ({ room, power })
-    );
-  }, [enriched]);
-
   // (removed unused totalPower aggregation)
 
-  // Build table rows: base from devices, overlay telemetry stats
+  // Build table rows: one row per telemetry reading (already filtered via enriched)
   const deviceTableRows = useMemo(() => {
-    const filteredDevices = devices.filter(
-      (d) =>
-        (deviceTypeFilter === "all" ||
-          d.type === deviceTypeFilter) &&
-        (roomFilter === "all" ||
-          (d.room || "Unknown") === roomFilter) &&
-        (deviceIdFilter === "all" ||
-          d.deviceId === deviceIdFilter)
+    const rows = enriched.map((r) => ({
+      deviceId: r.deviceId,
+      deviceName: r.deviceName,
+      deviceType: r.deviceType,
+      room: r.room,
+      status: r.status,
+      currentPower: r.value || 0,
+      lastUpdate: r.timestamp,
+    }));
+
+    rows.sort(
+      (a, b) =>
+        new Date(b.lastUpdate).getTime() -
+        new Date(a.lastUpdate).getTime()
     );
 
-    const statsById = new Map(
-      deviceStats.map(
-        (s) => [s.deviceId, s] as const
-      )
-    );
+    return rows;
+  }, [enriched]);
 
-    return filteredDevices.map((d) => {
-      const s = statsById.get(d.deviceId);
-      return {
-        deviceId: d.deviceId,
-        deviceName: d.name || d.deviceId,
-        deviceType: d.type,
-        room: d.room || "Unknown",
-        status: s?.status || "off",
-        totalPower: s?.totalPower || 0,
-        lastUpdate: s?.lastUpdate || "-",
-      };
-    });
-  }, [
-    devices,
-    deviceStats,
-    deviceTypeFilter,
-    roomFilter,
-  ]);
-
-  const rooms = useMemo(
-    () => [
-      "all",
-      ...Array.from(
-        new Set(
-          devices.map((d) => d.room || "Unknown")
-        )
-      ),
-    ],
-    [devices]
-  );
-  const deviceTypes = [
-    "all",
-    "plug",
-    "light",
-    "thermostat",
-  ];
+  // Removed unused rooms and deviceTypes lists
 
   const formatRelativeTime = (iso: string) => {
     const seconds = Math.floor(
@@ -627,23 +431,14 @@ export default function RichDashboard() {
 
       <main className="rd-main">
         <FiltersPanel
-          deviceType={deviceTypeFilter}
+          deviceType={"all"}
           deviceId={deviceIdFilter}
-          room={roomFilter}
           dateRange={dateRange}
-          deviceTypes={deviceTypes}
-          rooms={rooms}
           devices={devices.map((d) => ({
             deviceId: d.deviceId,
             name: d.name || d.deviceId,
           }))}
           onChange={(next) => {
-            if (next.deviceType !== undefined)
-              setDeviceTypeFilter(
-                next.deviceType
-              );
-            if (next.room !== undefined)
-              setRoomFilter(next.room);
             if (next.deviceId !== undefined)
               setDeviceIdFilter(next.deviceId);
             if (next.dateRange !== undefined)
@@ -651,21 +446,8 @@ export default function RichDashboard() {
           }}
         />
 
-        <KeyMetrics
-          totalEnergyKWh={totalEnergyKWh}
-          activeDevices={devices.length}
-          totalDevices={deviceStats.length}
-          readingsCount={enriched.length}
-        />
-
         <div className="rd-grid">
           <TrendChart data={dailyEnergyData} />
-        </div>
-        <div className="rd-grid">
-          <RoomBreakdownChart
-            data={roomBreakdown}
-            colors={COLORS}
-          />
         </div>
 
         <DeviceStatusTable

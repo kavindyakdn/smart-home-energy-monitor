@@ -4,19 +4,15 @@ import "./Filters.css";
 type FiltersProps = {
   deviceType: string;
   deviceId: string;
-  room: string;
   dateRange: { start: string; end: string };
-  deviceTypes: string[];
-  rooms: string[];
   devices: Array<{
     deviceId: string;
     name: string;
-    type?: string; // optional type to support filtering by deviceType
-  }>; // minimal shape
+    type?: string;
+  }>;
   onChange: (next: {
     deviceType?: string;
     deviceId?: string;
-    room?: string;
     dateRange?: { start: string; end: string };
   }) => void;
 };
@@ -24,10 +20,7 @@ type FiltersProps = {
 export function FiltersPanel({
   deviceType,
   deviceId,
-  room,
   dateRange,
-  deviceTypes,
-  rooms,
   devices,
   onChange,
 }: FiltersProps) {
@@ -38,45 +31,6 @@ export function FiltersPanel({
         <h2 className="fp-title">Filters</h2>
       </div>
       <div className="fp-grid">
-        <div>
-          <label className="fp-label">
-            Device Type
-          </label>
-          <select
-            value={deviceType}
-            onChange={(e) =>
-              onChange({
-                deviceType: e.target.value,
-              })
-            }
-            className="fp-select"
-          >
-            {deviceTypes.map((t) => (
-              <option key={t} value={t}>
-                {t === "all"
-                  ? "All Devices"
-                  : t.charAt(0).toUpperCase() +
-                    t.slice(1)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="fp-label">Room</label>
-          <select
-            value={room}
-            onChange={(e) =>
-              onChange({ room: e.target.value })
-            }
-            className="fp-select"
-          >
-            {rooms.map((r) => (
-              <option key={r} value={r}>
-                {r === "all" ? "All Rooms" : r}
-              </option>
-            ))}
-          </select>
-        </div>
         <div>
           <label className="fp-label">
             Device
@@ -122,7 +76,6 @@ export function FiltersPanel({
           <label className="fp-label">
             Date Range
           </label>
-          {/* Single visual input that holds a start and end date selector */}
           <div className="fp-datewrap">
             <input
               type="date"
